@@ -1,0 +1,59 @@
+name: CI Tests
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve Turborepo base/head SHAs
+        id: turbo_refs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE_SHA"
+            head="$PR_HEAD_SHA"
+          else
+            head="$CURRENT_SHA"
+            if [ -n "$PUSH_BEFORE_SHA" ] && [ "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+              base="$PUSH_BEFORE_SHA"
+            else
+              git fetch origin "$DEFAULT_BRANCH" --depth=1
+              base="$(git merge-base HEAD "origin/$DEFAULT_BRANCH")"
+            fi
+          fi
+
+          if [ -z "$base" ]; then
+            base="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
+          fi
+
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          echo "Using TURBO_SCM_BASE=$base"
+          echo "Using TURBO_SCM_HEAD=$head"
+
+      - name: Run affected tests
+        env:
+          TURBO_SCM_BASE: ${{ steps.turbo_refs.outputs.base }}
+          TURBO_SCM_HEAD: ${{ steps.turbo_refs.outputs.head }}
+        run: bun run test -- --affected
