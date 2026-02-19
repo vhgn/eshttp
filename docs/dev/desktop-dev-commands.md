@@ -1,0 +1,27 @@
+# Desktop Dev Commands
+
+This repo has two root desktop development entrypoints:
+
+- `bun dev:web` runs the desktop frontend in browser mode (Vite dev server).
+- `bun dev:app` runs the Tauri desktop app in development mode.
+
+## Why `beforeDevCommand` uses workspace filters
+
+`apps/desktop/src-tauri/tauri.conf.json` uses:
+
+- `"beforeDevCommand": "bun run --filter '@eshttp/desktop' dev"`
+- `"beforeBuildCommand": "bun run --filter '@eshttp/desktop' build"`
+
+Do not replace these with relative `cd .. && bun run ...` commands. The Tauri CLI launch directory is not stable across invocation styles (for example, invoking through root workspace scripts), and relative `cd` assumptions can break with `Script not found` errors.
+
+## Rust layout expectation
+
+`apps/desktop/src-tauri/Cargo.toml` declares a `[lib]` target named `eshttp_desktop_lib`. That requires `apps/desktop/src-tauri/src/lib.rs` to exist. Keep `src/main.rs` as a thin launcher:
+
+```rust
+fn main() {
+    eshttp_desktop_lib::run();
+}
+```
+
+Moving app startup logic back into `src/main.rs` without a matching `lib.path` or `src/lib.rs` will break `cargo metadata` and `tauri dev`.
