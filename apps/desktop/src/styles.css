@@ -346,6 +346,34 @@ select {
   gap: 0.3rem;
 }
 
+.git-commit-panel {
+  margin-top: 0.68rem;
+  display: grid;
+  gap: 0.48rem;
+}
+
+.git-commit-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.git-commit-panel .inline-monaco-input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+.git-commit-button {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--focus) 50%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--focus) 14%, var(--surface-3));
+  color: var(--ink);
+  padding: 0.42rem 0.54rem;
+}
+
 .tag {
   font-size: 0.7rem;
   border-radius: 999px;

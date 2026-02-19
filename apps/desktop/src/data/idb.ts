@@ -9,6 +9,9 @@ export interface ImportRecord {
   storage?: ImportStorage;
   path?: string;
   handle?: FileSystemDirectoryHandle;
+  storageKind?: "direct" | "git";
+  gitRepoRoot?: string;
+  pendingGitPaths?: string[];
 }
 
 export interface CacheRequestRecord {
@@ -119,6 +122,34 @@ export async function listImports(): Promise<ImportRecord[]> {
 export async function putImport(record: ImportRecord): Promise<void> {
   await withStore(STORE_IMPORTS, "readwrite", async (store) => {
     store.put(record);
+  });
+}
+
+export async function getImportById(importId: string): Promise<ImportRecord | null> {
+  return withStore(STORE_IMPORTS, "readonly", async (store) => {
+    const value = await requestToPromise(store.get(importId));
+    return (value as ImportRecord | undefined) ?? null;
+  });
+}
+
+export async function updateImportRecord(
+  importId: string,
+  patch: Partial<ImportRecord>,
+): Promise<ImportRecord | null> {
+  return withStore(STORE_IMPORTS, "readwrite", async (store) => {
+    const existing = await requestToPromise(store.get(importId));
+    const record = existing as ImportRecord | undefined;
+    if (!record) {
+      return null;
+    }
+
+    const updated: ImportRecord = {
+      ...record,
+      ...patch,
+    };
+
+    store.put(updated);
+    return updated;
   });
 }
 

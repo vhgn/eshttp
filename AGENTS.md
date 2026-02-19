@@ -6,6 +6,7 @@ Read these docs before editing matching areas:
 - `docs/dev/workspace-discovery.md`: workspace roots, `.eshttp.json` discovery behavior, and env file lookup.
 - `docs/dev/request-build-env.md`: HTTP parsing, placeholder resolution, env merge precedence, and error model.
 - `docs/dev/inline-monaco-placeholders.md`: inline Monaco language, placeholder completion rules, and env key wiring.
+- `docs/dev/desktop-storage-options.md`: desktop storage strategy interfaces, save checks, and Tauri git commit flow.
 
 Required behavior for future agents:
 - Validate docs against code before relying on them. If code and docs disagree, update docs in the same task.

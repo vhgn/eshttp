@@ -3,7 +3,8 @@
 Scope:
 - `apps/desktop/src/data/collectionsRepository.ts`
 - `apps/desktop/src/data/idb.ts`
-- `apps/desktop/src-tauri/src/main.rs`
+- `apps/desktop/src/data/storageOptions.ts`
+- `apps/desktop/src-tauri/src/lib.rs`
 
 ## Runtime modes and import records
 
@@ -17,6 +18,17 @@ Imports can also set `ImportRecord.storage`:
 
 Imports are persisted in IndexedDB (`imports` store). Cache snapshots are stored in `workspace_cache`. Pending writes are stored in `sync_queue`.
 
+Each import can now persist storage metadata:
+- `storageKind`: `"direct"` or `"git"`
+- `gitRepoRoot`: Tauri git repository root (git storage only)
+- `pendingGitPaths`: deduped relative paths written by eshttp and waiting for commit
+
+Tauri imports are auto-detected on creation:
+- inside git repo -> `storageKind: "git"`
+- outside git repo -> `storageKind: "direct"`
+
+Older Tauri imports without `storageKind` are backfilled on load.
+
 ## Workspace tree model
 
 Each import can produce:
@@ -27,6 +39,11 @@ Both appear in `WorkspaceTreeNode[]` from `loadWorkspaceTree()`. Sync status is 
 - `synced`: no queued ops for the import.
 - `pending`: queued ops exist.
 - `error`: at least one queued op has `error`.
+
+Workspace nodes also expose storage metadata for UI:
+- `storageKind`
+- `supportsCommit`
+- `pendingGitChanges`
 
 Each collection node now also carries `relativePath` so UI layers can render path-aware trees without parsing synthetic IDs.
 
@@ -59,6 +76,10 @@ Because collection discovery requires `.http` files, newly created collections a
 
 Writes are asynchronous. The UI may show pending until `flushSyncQueue()` applies ops.
 
+Save behavior is unchanged by git storage:
+- `Save` writes files (through sync queue)
+- `Save` does not auto-commit
+
 ## Sync loop
 
 `startSyncLoop()` runs `flushSyncQueue()` every `2_000ms`.
@@ -67,9 +88,28 @@ Writes are asynchronous. The UI may show pending until `flushSyncQueue()` applie
 - Success: apply write and remove queue record.
 - Failure: re-put same op with `error` message, preserving visibility of failure.
 
-`applySyncWrite()` targets runtime-specific backends:
-- `tauri`: invokes `write_text_file` command.
-- `web`: requests readwrite permission and writes through File System Access API.
+`applySyncWrite()` resolves a storage strategy (`resolveStorageOption(importRecord)`) and runs:
+1. `checkSave(...)`
+2. `save(...)`
+
+Strategy behavior:
+- `tauri + direct`: `write_text_file`
+- `tauri + git`: `write_text_file` and track changed path in `pendingGitPaths`
+- `web + direct`: File System Access permission check + write through handles
+
+## Commit flow (Tauri git only)
+
+`commitWorkspaceChanges(workspaceId, message?)`:
+1. Verify workspace storage supports commit.
+2. Flush sync queue first.
+3. Block commit if pending/error sync ops remain.
+4. Read `pendingGitPaths`; if empty, no-op success.
+5. Convert workspace-relative pending paths to git-repo-relative paths.
+6. Call `git_commit_paths` with commit message.
+7. Clear `pendingGitPaths` on success.
+
+Default message when empty:
+- `chore(eshttp): sync workspace changes`
 
 ## Environment reads
 
@@ -87,6 +127,8 @@ Tauri commands used by repository:
 - `list_requests`
 - `read_text_file`
 - `write_text_file`
+- `detect_git_repo`
+- `git_commit_paths`
 - `read_environment_file`
 
 In web runtime, analogous behavior is implemented directly in browser APIs (`showDirectoryPicker`, directory handles, file handles).

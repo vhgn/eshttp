@@ -3,7 +3,7 @@
 Scope:
 - `apps/cli/src/localSource.ts`
 - `libs/core/src/config.ts`
-- `apps/desktop/src-tauri/src/main.rs`
+- `apps/desktop/src-tauri/src/lib.rs`
 
 ## Workspace roots
 

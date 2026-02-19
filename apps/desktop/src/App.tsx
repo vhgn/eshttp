@@ -460,6 +460,7 @@ export function App() {
   const [workspaceTree, setWorkspaceTree] = useState<WorkspaceTreeNode[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [newCollectionPath, setNewCollectionPath] = useState("");
+  const [commitMessage, setCommitMessage] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
   const [activeCollectionIconEditor, setActiveCollectionIconEditor] = useState<string | null>(null);
   const [selectedIconId, setSelectedIconId] = useState(COLLECTION_ICON_OPTIONS[0]?.id ?? "folder");
@@ -732,6 +733,43 @@ export function App() {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
       pushToast(message);
+    }
+  }
+
+  async function onCommitWorkspaceChanges() {
+    if (!activeWorkspaceNode) {
+      setStatusText("error");
+      setResponseText("Select a workspace before committing.");
+      setResponseTab("response");
+      return;
+    }
+
+    try {
+      const result = await repository.commitWorkspaceChanges(
+        activeWorkspaceNode.workspace.id,
+        commitMessage,
+      );
+      await refreshWorkspaceTree();
+      setCommitMessage("");
+
+      if (result.committedPaths === 0) {
+        setStatusText("nothing to commit");
+        setResponseText("No pending eshttp-tracked changes to commit.");
+        setResponseTab("response");
+        return;
+      }
+
+      const suffix = result.committedPaths === 1 ? "" : "s";
+      setStatusText(`committed ${result.committedPaths} file${suffix}`);
+      setResponseText(
+        `Committed ${result.committedPaths} file${suffix} with message: ${result.message}`,
+      );
+      setResponseTab("response");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusText("error");
+      setResponseText(message);
+      setResponseTab("response");
     }
   }
 
@@ -1029,17 +1067,41 @@ export function App() {
           </button>
 
           {activeWorkspaceNode ? (
-            <div className="workspace-head">
-              <h2>{activeWorkspaceNode.workspace.name}</h2>
-              <div className="workspace-tags">
-                <span className={`tag ${activeWorkspaceNode.mode}`}>
-                  {activeWorkspaceNode.mode}
-                </span>
-                <span className={`tag ${activeWorkspaceNode.syncState}`}>
-                  {activeWorkspaceNode.syncState}
-                </span>
+            <>
+              <div className="workspace-head">
+                <h2>{activeWorkspaceNode.workspace.name}</h2>
+                <div className="workspace-tags">
+                  <span className={`tag ${activeWorkspaceNode.mode}`}>
+                    {activeWorkspaceNode.mode}
+                  </span>
+                  <span className={`tag ${activeWorkspaceNode.syncState}`}>
+                    {activeWorkspaceNode.syncState}
+                  </span>
+                </div>
               </div>
-            </div>
+              {activeWorkspaceNode.supportsCommit ? (
+                <div className="git-commit-panel">
+                  <p className="git-commit-meta">
+                    Git storage · {activeWorkspaceNode.pendingGitChanges} pending
+                  </p>
+                  <InlineMonacoInput
+                    value={commitMessage}
+                    onChange={setCommitMessage}
+                    placeholder="Commit message (optional)"
+                    theme={monacoTheme}
+                    beforeMount={registerMonacoThemes}
+                    ariaLabel="Git commit message"
+                  />
+                  <button
+                    type="button"
+                    className="git-commit-button"
+                    onClick={() => void onCommitWorkspaceChanges()}
+                  >
+                    Commit Changes
+                  </button>
+                </div>
+              ) : null}
+            </>
           ) : (
             <p className="muted">No workspaces yet.</p>
           )}
