@@ -1,5 +1,6 @@
 {
-  "name": "eshttp-core",
+  "name": "@eshttp/core",
+  "private": false,
   "version": "0.1.0",
   "description": "Core types and pure runtime for eshttp",
   "type": "module",
