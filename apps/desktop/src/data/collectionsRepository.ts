@@ -7,6 +7,7 @@ import {
   type CacheWorkspaceRecord,
   deleteSyncOp,
   getCacheWorkspace,
+  getImportById,
   type ImportRecord,
   type ImportRuntime,
   listImports,
@@ -14,7 +15,13 @@ import {
   putCacheWorkspace,
   putImport,
   putSyncOp,
+  updateImportRecord,
 } from "./idb";
+import {
+  ensureReadWritePermission,
+  resolveStorageOption,
+  type StorageKind,
+} from "./storageOptions";
 
 export type WorkspaceMode = "readonly" | "editable";
 export type SyncState = "synced" | "pending" | "error";
@@ -24,6 +31,9 @@ export interface WorkspaceTreeNode {
   mode: WorkspaceMode;
   importId: string;
   syncState: SyncState;
+  storageKind: StorageKind;
+  supportsCommit: boolean;
+  pendingGitChanges: number;
   collections: Array<{
     relativePath: string;
     collection: Collection;
@@ -66,17 +76,12 @@ interface SaveResult {
   requestId: string;
 }
 
-type WebPermissionDescriptor = {
-  mode?: "read" | "readwrite";
-};
-
 type WebDirectoryHandle = FileSystemDirectoryHandle & {
   values?: () => AsyncIterable<FileSystemHandle>;
-  queryPermission?: (descriptor: WebPermissionDescriptor) => Promise<PermissionState>;
-  requestPermission?: (descriptor: WebPermissionDescriptor) => Promise<PermissionState>;
 };
 
 const SYNC_INTERVAL_MS = 2_000;
+const DEFAULT_COMMIT_MESSAGE = "chore(eshttp): sync workspace changes";
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, "/");
@@ -101,7 +106,7 @@ function basename(path: string): string {
   return sections[sections.length - 1] ?? path;
 }
 
-function relativePath(rootPath: string, valuePath: string): string {
+function relativePathOrNull(rootPath: string, valuePath: string): string | null {
   const root = normalizePath(rootPath).replace(/\/+$/, "");
   const value = normalizePath(valuePath);
 
@@ -110,10 +115,14 @@ function relativePath(rootPath: string, valuePath: string): string {
   }
 
   if (!value.startsWith(`${root}/`)) {
-    return ".";
+    return null;
   }
 
   return value.slice(root.length + 1);
+}
+
+function relativePath(rootPath: string, valuePath: string): string {
+  return relativePathOrNull(rootPath, valuePath) ?? ".";
 }
 
 function normalizeCollectionRelativePath(path: string): string | null {
@@ -215,28 +224,6 @@ async function readFileFromHandle(
   }
 }
 
-async function writeFileToHandle(
-  root: FileSystemDirectoryHandle,
-  relativePathValue: string,
-  content: string,
-): Promise<void> {
-  const segments = relativePathValue.split("/").filter(Boolean);
-  const fileName = segments.pop();
-  if (!fileName) {
-    throw new Error("Invalid target path");
-  }
-
-  let current = root;
-  for (const segment of segments) {
-    current = await current.getDirectoryHandle(segment, { create: true });
-  }
-
-  const fileHandle = await current.getFileHandle(fileName, { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(content);
-  await writable.close();
-}
-
 interface WebCollectionSnapshot {
   relativePath: string;
   name: string;
@@ -296,24 +283,34 @@ async function scanWebCollections(
   return results;
 }
 
-async function ensureReadWritePermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
-  const target = handle as WebDirectoryHandle;
-  const readWriteDescriptor: WebPermissionDescriptor = { mode: "readwrite" };
-  if (!target.queryPermission || !target.requestPermission) {
-    return true;
-  }
-
-  const readPermission = await target.queryPermission(readWriteDescriptor);
-  if (readPermission === "granted") {
-    return true;
-  }
-
-  const granted = await target.requestPermission(readWriteDescriptor);
-  return granted === "granted";
-}
-
 function makeImportNameFromPath(path: string): string {
   return basename(path);
+}
+
+function dedupePaths(paths: string[]): string[] {
+  return Array.from(
+    new Set(paths.map((entry) => normalizePath(entry).trim()).filter((entry) => entry.length > 0)),
+  );
+}
+
+function storageKindForImport(importRecord: ImportRecord): StorageKind {
+  if (importRecord.runtime === "web") {
+    return "direct";
+  }
+
+  return importRecord.storageKind === "git" ? "git" : "direct";
+}
+
+function supportsCommitForImport(importRecord: ImportRecord): boolean {
+  return importRecord.runtime === "tauri" && storageKindForImport(importRecord) === "git";
+}
+
+function pendingGitChangesForImport(importRecord: ImportRecord): number {
+  if (!supportsCommitForImport(importRecord)) {
+    return 0;
+  }
+
+  return dedupePaths(importRecord.pendingGitPaths ?? []).length;
 }
 
 export class CollectionsRepository {
@@ -369,7 +366,7 @@ export class CollectionsRepository {
     this.collectionIndex.clear();
     this.workspaceIndex.clear();
 
-    const imports = await listImports();
+    const imports = await this.withBackfilledTauriStorage(await listImports());
     const syncQueue = await listSyncQueue();
     const trees: WorkspaceTreeNode[] = [];
 
@@ -657,11 +654,109 @@ export class CollectionsRepository {
     return readFileFromHandle(importRecord.handle, target);
   }
 
+  async commitWorkspaceChanges(
+    workspaceId: string,
+    message?: string,
+  ): Promise<{ committedPaths: number; message: string }> {
+    const workspace = this.workspaceIndex.get(workspaceId);
+    if (!workspace) {
+      throw new Error("Workspace not found in workspace tree");
+    }
+
+    const importRecord = await this.getImport(workspace.importId);
+    if (!importRecord) {
+      throw new Error("Import metadata not found");
+    }
+
+    if (!supportsCommitForImport(importRecord)) {
+      throw new Error("This workspace is not configured for git commits.");
+    }
+
+    await this.flushSyncQueue();
+
+    const remainingSyncOps = (await listSyncQueue()).filter(
+      (entry) => entry.importId === importRecord.id,
+    );
+    if (remainingSyncOps.length > 0) {
+      throw new Error("Cannot commit while pending sync operations exist.");
+    }
+
+    const refreshedImport = await this.getImport(importRecord.id);
+    if (!refreshedImport) {
+      throw new Error("Import metadata not found");
+    }
+
+    const pendingPaths = dedupePaths(refreshedImport.pendingGitPaths ?? []);
+    const commitMessage = message?.trim() ? message.trim() : DEFAULT_COMMIT_MESSAGE;
+    if (pendingPaths.length === 0) {
+      return {
+        committedPaths: 0,
+        message: commitMessage,
+      };
+    }
+
+    const commitPaths = this.toGitCommitPaths(refreshedImport, pendingPaths);
+    const storage = resolveStorageOption(refreshedImport);
+    if (!storage.supportsCommit || !storage.checkCommit || !storage.commit) {
+      throw new Error("Storage option does not support git commit.");
+    }
+
+    const check = await storage.checkCommit({
+      importRecord: refreshedImport,
+      paths: commitPaths,
+      message: commitMessage,
+    });
+    if (!check.ok) {
+      throw new Error(check.reason);
+    }
+
+    await storage.commit({
+      importRecord: refreshedImport,
+      paths: commitPaths,
+      message: commitMessage,
+    });
+
+    await updateImportRecord(refreshedImport.id, { pendingGitPaths: [] });
+
+    return {
+      committedPaths: pendingPaths.length,
+      message: commitMessage,
+    };
+  }
+
   async flushSyncQueue(): Promise<void> {
     const queue = await listSyncQueue();
     for (const item of queue) {
       try {
-        await this.applySyncWrite(item.importId, item.relativePath, item.content);
+        const importRecord = await this.getImport(item.importId);
+        if (!importRecord) {
+          throw new Error(`Import ${item.importId} not found`);
+        }
+
+        let targetImport = importRecord;
+        if (targetImport.runtime === "tauri" && !targetImport.storageKind && targetImport.path) {
+          const storage = await this.detectTauriStorage(targetImport.path);
+          targetImport = (await updateImportRecord(targetImport.id, {
+            storageKind: storage.storageKind,
+            gitRepoRoot: storage.gitRepoRoot,
+            pendingGitPaths: dedupePaths(targetImport.pendingGitPaths ?? []),
+          })) ?? {
+            ...targetImport,
+            storageKind: storage.storageKind,
+            gitRepoRoot: storage.gitRepoRoot,
+            pendingGitPaths: dedupePaths(targetImport.pendingGitPaths ?? []),
+          };
+        }
+
+        const trackedInGit = await this.applySyncWrite(
+          targetImport,
+          item.relativePath,
+          item.content,
+        );
+        if (trackedInGit) {
+          await this.addPendingGitPath(targetImport.id, item.relativePath);
+        }
+
         await deleteSyncOp(item.id);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -771,6 +866,9 @@ export class CollectionsRepository {
       mode: "readonly",
       importId: importRecord.id,
       syncState,
+      storageKind: storageKindForImport(importRecord),
+      supportsCommit: supportsCommitForImport(importRecord),
+      pendingGitChanges: pendingGitChangesForImport(importRecord),
       collections,
     };
   }
@@ -856,6 +954,9 @@ export class CollectionsRepository {
       mode: "readonly",
       importId: importRecord.id,
       syncState,
+      storageKind: storageKindForImport(importRecord),
+      supportsCommit: supportsCommitForImport(importRecord),
+      pendingGitChanges: pendingGitChangesForImport(importRecord),
       collections,
     };
   }
@@ -947,6 +1048,9 @@ export class CollectionsRepository {
       mode: "editable",
       importId: importRecord.id,
       syncState,
+      storageKind: storageKindForImport(importRecord),
+      supportsCommit: supportsCommitForImport(importRecord),
+      pendingGitChanges: pendingGitChangesForImport(importRecord),
       collections,
     };
   }
@@ -1087,39 +1191,108 @@ export class CollectionsRepository {
     };
   }
 
-  private async applySyncWrite(
-    importId: string,
-    relativePathValue: string,
-    content: string,
-  ): Promise<void> {
-    const importRecord = await this.getImport(importId);
-    if (!importRecord) {
-      throw new Error(`Import ${importId} not found`);
-    }
+  private async withBackfilledTauriStorage(imports: ImportRecord[]): Promise<ImportRecord[]> {
+    const updatedImports: ImportRecord[] = [];
 
-    if (importRecord.runtime === "tauri") {
-      if (!importRecord.path) {
-        throw new Error("Imported path is missing for tauri workspace");
+    for (const importRecord of imports) {
+      if (importRecord.runtime !== "tauri" || importRecord.storageKind) {
+        updatedImports.push(importRecord);
+        continue;
       }
 
-      const target = joinFsPath(importRecord.path, relativePathValue);
-      await invokeTauri<void>("write_text_file", {
-        path: target,
-        contents: content,
+      const storage = importRecord.path
+        ? await this.detectTauriStorage(importRecord.path)
+        : { storageKind: "direct" as const, gitRepoRoot: undefined };
+
+      const updated = await updateImportRecord(importRecord.id, {
+        storageKind: storage.storageKind,
+        gitRepoRoot: storage.gitRepoRoot,
+        pendingGitPaths: dedupePaths(importRecord.pendingGitPaths ?? []),
       });
+
+      updatedImports.push(
+        updated ?? {
+          ...importRecord,
+          storageKind: storage.storageKind,
+          gitRepoRoot: storage.gitRepoRoot,
+          pendingGitPaths: dedupePaths(importRecord.pendingGitPaths ?? []),
+        },
+      );
+    }
+
+    return updatedImports;
+  }
+
+  private async detectTauriStorage(
+    path: string,
+  ): Promise<{ storageKind: StorageKind; gitRepoRoot?: string }> {
+    const gitRepoRoot = await invokeTauri<string | null>("detect_git_repo", { path });
+    if (!gitRepoRoot) {
+      return {
+        storageKind: "direct",
+      };
+    }
+
+    return {
+      storageKind: "git",
+      gitRepoRoot,
+    };
+  }
+
+  private async addPendingGitPath(importId: string, relativePathValue: string): Promise<void> {
+    const importRecord = await this.getImport(importId);
+    if (!importRecord || !supportsCommitForImport(importRecord)) {
       return;
     }
 
-    if (!importRecord.handle) {
-      throw new Error("Imported web directory handle is missing");
+    const pendingGitPaths = dedupePaths([
+      ...(importRecord.pendingGitPaths ?? []),
+      relativePathValue,
+    ]);
+    await updateImportRecord(importId, { pendingGitPaths });
+  }
+
+  private toGitCommitPaths(importRecord: ImportRecord, paths: string[]): string[] {
+    if (!importRecord.path || !importRecord.gitRepoRoot) {
+      throw new Error("Git commit metadata is incomplete for workspace.");
     }
 
-    const allowed = await ensureReadWritePermission(importRecord.handle);
-    if (!allowed) {
-      throw new Error("No write permission for selected directory");
+    const commitPaths: string[] = [];
+    for (const path of dedupePaths(paths)) {
+      const workspacePath = joinFsPath(importRecord.path, path);
+      const relativeToRepo = relativePathOrNull(importRecord.gitRepoRoot, workspacePath);
+      if (!relativeToRepo || relativeToRepo === ".") {
+        throw new Error(`Path is outside git repository scope: ${path}`);
+      }
+
+      commitPaths.push(relativeToRepo);
     }
 
-    await writeFileToHandle(importRecord.handle, relativePathValue, content);
+    return dedupePaths(commitPaths);
+  }
+
+  private async applySyncWrite(
+    importRecord: ImportRecord,
+    relativePathValue: string,
+    content: string,
+  ): Promise<boolean> {
+    const storage = resolveStorageOption(importRecord);
+    const check = await storage.checkSave({
+      importRecord,
+      relativePath: relativePathValue,
+      content,
+    });
+    if (!check.ok) {
+      throw new Error(check.reason);
+    }
+
+    await storage.save({
+      importRecord,
+      relativePath: relativePathValue,
+      content,
+    });
+
+    return storage.kind === "git";
   }
 
   private async importFromTauri(): Promise<ImportRecord | null> {
@@ -1128,12 +1301,17 @@ export class CollectionsRepository {
       return null;
     }
 
+    const storage = await this.detectTauriStorage(selected);
+
     return {
       id: crypto.randomUUID(),
       name: makeImportNameFromPath(selected),
       runtime: "tauri",
       path: selected,
       createdAt: Date.now(),
+      storageKind: storage.storageKind,
+      gitRepoRoot: storage.gitRepoRoot,
+      pendingGitPaths: [],
     };
   }
 
@@ -1158,6 +1336,8 @@ export class CollectionsRepository {
       runtime: "web",
       handle,
       createdAt: Date.now(),
+      storageKind: "direct",
+      pendingGitPaths: [],
     };
   }
 
@@ -1166,8 +1346,7 @@ export class CollectionsRepository {
   }
 
   private async getImport(importId: string): Promise<ImportRecord | null> {
-    const imports = await listImports();
-    return imports.find((entry) => entry.id === importId) ?? null;
+    return getImportById(importId);
   }
 }
 

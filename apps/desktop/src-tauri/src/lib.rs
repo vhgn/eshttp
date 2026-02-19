@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -92,7 +93,11 @@ fn glob_match(pattern: &str, candidate: &str) -> bool {
 }
 
 fn path_included(config: &DiscoveryConfig, relative: &str) -> bool {
-    if config.exclude.iter().any(|pattern| glob_match(pattern, relative)) {
+    if config
+        .exclude
+        .iter()
+        .any(|pattern| glob_match(pattern, relative))
+    {
         return false;
     }
 
@@ -223,7 +228,10 @@ fn find_collections(
             };
 
             out.push(Collection {
-                id: make_id("collection", &format!("{}/{}", workspace.id, relative_workspace)),
+                id: make_id(
+                    "collection",
+                    &format!("{}/{}", workspace.id, relative_workspace),
+                ),
                 workspace_id: workspace.id.clone(),
                 name,
                 uri: dir.to_string_lossy().to_string(),
@@ -322,7 +330,8 @@ fn list_requests(collection: Collection) -> Result<Vec<RequestFile>, String> {
 
 #[tauri::command]
 fn read_request_text(request: RequestFile) -> Result<String, String> {
-    fs::read_to_string(request.uri).map_err(|error| format!("Failed to read request file: {}", error))
+    fs::read_to_string(request.uri)
+        .map_err(|error| format!("Failed to read request file: {}", error))
 }
 
 #[tauri::command]
@@ -347,6 +356,126 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
 
     fs::write(&target, contents)
         .map_err(|error| format!("Failed to write {}: {}", target.display(), error))
+}
+
+#[tauri::command]
+fn detect_git_repo(path: String) -> Result<Option<String>, String> {
+    let output = Command::new("git")
+        .args(["-C", &path, "rev-parse", "--show-toplevel"])
+        .output()
+        .map_err(|error| format!("Failed to run git for {}: {}", path, error))?;
+
+    if output.status.success() {
+        let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if root.is_empty() {
+            return Ok(None);
+        }
+
+        return Ok(Some(root));
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if stderr.contains("not a git repository") {
+        return Ok(None);
+    }
+
+    Err(format!(
+        "Failed to detect git repository for {}: {}",
+        path,
+        stderr.trim()
+    ))
+}
+
+fn sanitize_commit_paths(paths: Vec<String>) -> Vec<String> {
+    let mut sanitized = Vec::new();
+
+    for path in paths {
+        let normalized = path.replace('\\', "/").trim().to_string();
+        if normalized.is_empty() {
+            continue;
+        }
+
+        if normalized.starts_with('/') {
+            continue;
+        }
+
+        if normalized.split('/').any(|segment| segment == "..") {
+            continue;
+        }
+
+        if !sanitized.iter().any(|entry| entry == &normalized) {
+            sanitized.push(normalized);
+        }
+    }
+
+    sanitized
+}
+
+#[tauri::command]
+fn git_commit_paths(repo_root: String, paths: Vec<String>, message: String) -> Result<(), String> {
+    let sanitized = sanitize_commit_paths(paths);
+    if sanitized.is_empty() {
+        return Ok(());
+    }
+
+    let mut add_args = vec![
+        "-C".to_string(),
+        repo_root.clone(),
+        "add".to_string(),
+        "--".to_string(),
+    ];
+    add_args.extend(sanitized.clone());
+
+    let add_output = Command::new("git")
+        .args(add_args)
+        .output()
+        .map_err(|error| format!("Failed to run git add: {}", error))?;
+
+    if !add_output.status.success() {
+        let stderr = String::from_utf8_lossy(&add_output.stderr).to_string();
+        return Err(format!("git add failed: {}", stderr.trim()));
+    }
+
+    let mut has_staged_args = vec![
+        "-C".to_string(),
+        repo_root.clone(),
+        "diff".to_string(),
+        "--cached".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+    ];
+    has_staged_args.extend(sanitized.clone());
+
+    let staged_output = Command::new("git")
+        .args(has_staged_args)
+        .output()
+        .map_err(|error| format!("Failed to check staged git changes: {}", error))?;
+
+    if staged_output.status.success() {
+        return Ok(());
+    }
+
+    let mut commit_args = vec![
+        "-C".to_string(),
+        repo_root,
+        "commit".to_string(),
+        "-m".to_string(),
+        message,
+        "--".to_string(),
+    ];
+    commit_args.extend(sanitized);
+
+    let commit_output = Command::new("git")
+        .args(commit_args)
+        .output()
+        .map_err(|error| format!("Failed to run git commit: {}", error))?;
+
+    if !commit_output.status.success() {
+        let stderr = String::from_utf8_lossy(&commit_output.stderr).to_string();
+        return Err(format!("git commit failed: {}", stderr.trim()));
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -431,6 +560,8 @@ pub fn run() {
             read_request_text,
             read_text_file,
             write_text_file,
+            detect_git_repo,
+            git_commit_paths,
             read_environment_file,
             pick_directory,
             send_http
