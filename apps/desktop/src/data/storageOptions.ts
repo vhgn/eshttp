@@ -46,19 +46,6 @@ function normalizePath(value: string): string {
   return value.replace(/\\/g, "/");
 }
 
-function joinFsPath(base: string, ...parts: string[]): string {
-  let output = base.replace(/[\\/]+$/, "");
-  for (const part of parts) {
-    if (!part || part === ".") {
-      continue;
-    }
-
-    output = `${output}/${part.replace(/^[/\\]+/, "")}`;
-  }
-
-  return output;
-}
-
 export async function ensureReadWritePermission(
   handle: FileSystemDirectoryHandle,
 ): Promise<boolean> {
@@ -141,9 +128,9 @@ function createTauriDirectStorageOption(invoke: TauriInvoke): WorkspaceStorageOp
         throw new Error("Imported path is missing for tauri workspace");
       }
 
-      const target = joinFsPath(input.importRecord.path, input.relativePath);
-      await invoke<void>("write_text_file", {
-        path: target,
+      await invoke<void>("write_scoped_text_file", {
+        root: input.importRecord.path,
+        relativePath: input.relativePath,
         contents: input.content,
       });
     },
@@ -170,9 +157,9 @@ function createTauriGitStorageOption(invoke: TauriInvoke): WorkspaceStorageOptio
         throw new Error("Imported path is missing for tauri workspace");
       }
 
-      const target = joinFsPath(input.importRecord.path, input.relativePath);
-      await invoke<void>("write_text_file", {
-        path: target,
+      await invoke<void>("write_scoped_text_file", {
+        root: input.importRecord.path,
+        relativePath: input.relativePath,
         contents: input.content,
       });
     },

@@ -17,7 +17,25 @@ export class TauriCollectionSource implements CollectionSource {
   }
 
   async readRequestText(request: RequestFile): Promise<string> {
-    return invokeTauri("read_request_text", { request });
+    const lastSeparatorIndex = Math.max(
+      request.uri.lastIndexOf("/"),
+      request.uri.lastIndexOf("\\"),
+    );
+    if (lastSeparatorIndex <= 0 || lastSeparatorIndex >= request.uri.length - 1) {
+      throw new Error(`Invalid request path: ${request.uri}`);
+    }
+
+    const root = request.uri.slice(0, lastSeparatorIndex);
+    const relativePath = request.uri.slice(lastSeparatorIndex + 1);
+    const text = await invokeTauri<string | null>("read_scoped_text_file", {
+      root,
+      relativePath,
+    });
+    if (text == null) {
+      throw new Error(`Request file not found: ${request.uri}`);
+    }
+
+    return text;
   }
 
   async readEnvironmentFile(scopeUri: string, envName: string): Promise<string | null> {

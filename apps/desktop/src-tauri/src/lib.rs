@@ -2,8 +2,10 @@ use dirs::config_dir;
 use glob::Pattern;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::ErrorKind;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -86,6 +88,183 @@ fn relative_path(base: &Path, path: &Path) -> String {
     }
 }
 
+fn canonicalize_existing_dir(path: &Path, label: &str) -> Result<PathBuf, String> {
+    let canonical = fs::canonicalize(path)
+        .map_err(|error| format!("Failed to resolve {} {}: {}", label, path.display(), error))?;
+    let metadata = fs::metadata(&canonical).map_err(|error| {
+        format!(
+            "Failed to stat {} {}: {}",
+            label,
+            canonical.display(),
+            error
+        )
+    })?;
+    if !metadata.is_dir() {
+        return Err(format!(
+            "{} is not a directory: {}",
+            label,
+            canonical.display()
+        ));
+    }
+
+    Ok(canonical)
+}
+
+fn ensure_within_root(root: &Path, candidate: &Path) -> Result<(), String> {
+    if candidate == root || candidate.starts_with(root) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Resolved path is outside scope root. root={}, resolved={}",
+        root.display(),
+        candidate.display()
+    ))
+}
+
+fn parse_relative_path(relative_path: &str) -> Result<PathBuf, String> {
+    let trimmed = relative_path.trim();
+    if trimmed.is_empty() {
+        return Err("Relative path is empty".to_string());
+    }
+
+    let mut parsed = PathBuf::new();
+    for component in Path::new(trimmed).components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(segment) => parsed.push(segment),
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(format!(
+                    "Invalid relative path '{}': parent and absolute segments are not allowed",
+                    relative_path
+                ))
+            }
+        }
+    }
+
+    if parsed.as_os_str().is_empty() {
+        return Err(format!("Invalid relative path '{}'", relative_path));
+    }
+
+    Ok(parsed)
+}
+
+fn resolve_scoped_read_path(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let parsed_relative = parse_relative_path(relative_path)?;
+    let target = root.join(parsed_relative);
+
+    let metadata = match fs::symlink_metadata(&target) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(target),
+        Err(error) => {
+            return Err(format!(
+                "Failed to stat scoped read path {}: {}",
+                target.display(),
+                error
+            ))
+        }
+    };
+
+    if metadata.file_type().is_symlink() || metadata.is_file() {
+        let resolved = fs::canonicalize(&target).map_err(|error| {
+            format!(
+                "Failed to resolve scoped read path {}: {}",
+                target.display(),
+                error
+            )
+        })?;
+        ensure_within_root(root, &resolved)?;
+        return Ok(resolved);
+    }
+
+    Ok(target)
+}
+
+fn resolve_scoped_write_path(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let parsed_relative = parse_relative_path(relative_path)?;
+    let segments: Vec<String> = parsed_relative
+        .iter()
+        .map(|segment| segment.to_string_lossy().to_string())
+        .collect();
+
+    let (file_name, parent_segments) = match segments.split_last() {
+        Some((file_name, parent_segments)) => (file_name, parent_segments),
+        None => return Err("Target file name is missing".to_string()),
+    };
+
+    let mut current = root.to_path_buf();
+    for segment in parent_segments {
+        let next = current.join(segment);
+        match fs::symlink_metadata(&next) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() {
+                    return Err(format!(
+                        "Refusing to write through symlinked directory {}",
+                        next.display()
+                    ));
+                }
+                if !metadata.is_dir() {
+                    return Err(format!(
+                        "Path segment is not a directory: {}",
+                        next.display()
+                    ));
+                }
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                fs::create_dir(&next).map_err(|create_error| {
+                    format!("Failed to create {}: {}", next.display(), create_error)
+                })?;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "Failed to inspect path segment {}: {}",
+                    next.display(),
+                    error
+                ))
+            }
+        }
+
+        let resolved = fs::canonicalize(&next).map_err(|error| {
+            format!("Failed to resolve directory {}: {}", next.display(), error)
+        })?;
+        ensure_within_root(root, &resolved)?;
+        current = resolved;
+    }
+
+    let target = current.join(file_name);
+    match fs::symlink_metadata(&target) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                let resolved = fs::canonicalize(&target).map_err(|error| {
+                    format!(
+                        "Failed to resolve scoped write path {}: {}",
+                        target.display(),
+                        error
+                    )
+                })?;
+                ensure_within_root(root, &resolved)?;
+            } else if metadata.is_dir() {
+                return Err(format!("Target path is a directory: {}", target.display()));
+            } else if !metadata.is_file() {
+                return Err(format!(
+                    "Target path is not a regular file: {}",
+                    target.display()
+                ));
+            }
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "Failed to inspect scoped write path {}: {}",
+                target.display(),
+                error
+            ))
+        }
+    }
+
+    Ok(target)
+}
+
 fn glob_match(pattern: &str, candidate: &str) -> bool {
     Pattern::new(pattern)
         .map(|glob| glob.matches(candidate))
@@ -159,9 +338,17 @@ fn read_dirs(path: &Path) -> Vec<PathBuf> {
     };
 
     for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        if !file_type.is_dir() || file_type.is_symlink() {
+            continue;
+        }
+
         let entry_path = entry.path();
-        if entry_path.is_dir() {
-            result.push(entry_path);
+        if let Ok(canonical) = fs::canonicalize(entry_path) {
+            result.push(canonical);
         }
     }
 
@@ -170,11 +357,18 @@ fn read_dirs(path: &Path) -> Vec<PathBuf> {
 
 fn find_collections(
     workspace: &Workspace,
-    workspace_path: &Path,
+    workspace_root: &Path,
     dir: &Path,
     active: Option<ActiveConfig>,
+    visited: &mut HashSet<PathBuf>,
     out: &mut Vec<Collection>,
 ) -> Result<(), String> {
+    if !visited.insert(dir.to_path_buf()) {
+        return Ok(());
+    }
+
+    ensure_within_root(workspace_root, dir)?;
+
     let local_config = read_discovery_config(dir)?;
 
     let effective = if let Some(config) = local_config {
@@ -186,7 +380,7 @@ fn find_collections(
         active
     };
 
-    let relative_workspace = relative_path(workspace_path, dir);
+    let relative_workspace = relative_path(workspace_root, dir);
     if let Some(active_config) = &effective {
         if !path_included(&active_config.config, &relative_workspace) {
             return Ok(());
@@ -200,16 +394,35 @@ fn find_collections(
     let mut subdirs = Vec::new();
 
     for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
+
         let path = entry.path();
-        if path.is_file() {
+        if file_type.is_file() {
             if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
                 if name.ends_with(".http") {
                     has_http_files = true;
                 }
             }
-        } else if path.is_dir() {
-            subdirs.push(path);
+            continue;
         }
+
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        let Ok(canonical_subdir) = fs::canonicalize(&path) else {
+            continue;
+        };
+        if ensure_within_root(workspace_root, &canonical_subdir).is_err() {
+            continue;
+        }
+
+        subdirs.push(canonical_subdir);
     }
 
     if has_http_files {
@@ -234,13 +447,27 @@ fn find_collections(
                 ),
                 workspace_id: workspace.id.clone(),
                 name,
-                uri: dir.to_string_lossy().to_string(),
+                uri: if relative_workspace == "." {
+                    workspace.uri.clone()
+                } else {
+                    PathBuf::from(&workspace.uri)
+                        .join(&relative_workspace)
+                        .to_string_lossy()
+                        .to_string()
+                },
             });
         }
     }
 
     for subdir in subdirs {
-        find_collections(workspace, workspace_path, &subdir, effective.clone(), out)?;
+        find_collections(
+            workspace,
+            workspace_root,
+            &subdir,
+            effective.clone(),
+            visited,
+            out,
+        )?;
     }
 
     Ok(())
@@ -277,13 +504,16 @@ fn discover_collections(workspace: Workspace) -> Result<Vec<Collection>, String>
     if !workspace_path.exists() {
         return Ok(Vec::new());
     }
+    let workspace_root = canonicalize_existing_dir(&workspace_path, "workspace")?;
 
     let mut results = Vec::new();
+    let mut visited = HashSet::new();
     find_collections(
         &workspace,
-        &workspace_path,
-        &workspace_path,
+        &workspace_root,
+        &workspace_root,
         None,
+        &mut visited,
         &mut results,
     )?;
 
@@ -293,18 +523,21 @@ fn discover_collections(workspace: Workspace) -> Result<Vec<Collection>, String>
 
 #[tauri::command]
 fn list_requests(collection: Collection) -> Result<Vec<RequestFile>, String> {
-    let collection_path = PathBuf::from(&collection.uri);
+    let collection_path = canonicalize_existing_dir(Path::new(&collection.uri), "collection")?;
     let entries = fs::read_dir(&collection_path)
         .map_err(|error| format!("Failed to read {}: {}", collection.uri, error))?;
 
     let mut requests = Vec::new();
 
     for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_symlink() || !file_type.is_file() {
             continue;
         }
 
+        let path = entry.path();
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
@@ -312,9 +545,17 @@ fn list_requests(collection: Collection) -> Result<Vec<RequestFile>, String> {
         if !file_name.ends_with(".http") {
             continue;
         }
+        let canonical_file = fs::canonicalize(&path).map_err(|error| {
+            format!(
+                "Failed to resolve request file {}: {}",
+                path.display(),
+                error
+            )
+        })?;
+        ensure_within_root(&collection_path, &canonical_file)?;
 
         let title = file_name.trim_end_matches(".http").to_string();
-        let uri = path.to_string_lossy().to_string();
+        let uri = canonical_file.to_string_lossy().to_string();
 
         requests.push(RequestFile {
             id: make_id("request", &uri),
@@ -329,16 +570,20 @@ fn list_requests(collection: Collection) -> Result<Vec<RequestFile>, String> {
 }
 
 #[tauri::command]
-fn read_request_text(request: RequestFile) -> Result<String, String> {
-    fs::read_to_string(request.uri)
-        .map_err(|error| format!("Failed to read request file: {}", error))
-}
-
-#[tauri::command]
-fn read_text_file(path: String) -> Result<Option<String>, String> {
-    let target = PathBuf::from(path);
+fn read_scoped_text_file(root: String, relative_path: String) -> Result<Option<String>, String> {
+    let scope_root = canonicalize_existing_dir(Path::new(&root), "scope root")?;
+    let target = resolve_scoped_read_path(&scope_root, &relative_path)?;
     if !target.exists() {
         return Ok(None);
+    }
+
+    let metadata = fs::metadata(&target)
+        .map_err(|error| format!("Failed to stat {}: {}", target.display(), error))?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "Target is not a regular file: {}",
+            target.display()
+        ));
     }
 
     let value = fs::read_to_string(&target)
@@ -347,12 +592,13 @@ fn read_text_file(path: String) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn write_text_file(path: String, contents: String) -> Result<(), String> {
-    let target = PathBuf::from(path);
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to create {}: {}", parent.display(), error))?;
-    }
+fn write_scoped_text_file(
+    root: String,
+    relative_path: String,
+    contents: String,
+) -> Result<(), String> {
+    let scope_root = canonicalize_existing_dir(Path::new(&root), "scope root")?;
+    let target = resolve_scoped_write_path(&scope_root, &relative_path)?;
 
     fs::write(&target, contents)
         .map_err(|error| format!("Failed to write {}: {}", target.display(), error))
@@ -399,6 +645,17 @@ fn sanitize_commit_paths(paths: Vec<String>) -> Vec<String> {
             continue;
         }
 
+        if normalized.contains('\0') {
+            continue;
+        }
+
+        if normalized
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == ".")
+        {
+            continue;
+        }
+
         if normalized.split('/').any(|segment| segment == "..") {
             continue;
         }
@@ -411,20 +668,29 @@ fn sanitize_commit_paths(paths: Vec<String>) -> Vec<String> {
     sanitized
 }
 
+fn to_literal_pathspec(path: &str) -> String {
+    format!(":(literal){}", path)
+}
+
 #[tauri::command]
 fn git_commit_paths(repo_root: String, paths: Vec<String>, message: String) -> Result<(), String> {
+    let canonical_repo_root = canonicalize_existing_dir(Path::new(&repo_root), "repository root")?;
     let sanitized = sanitize_commit_paths(paths);
     if sanitized.is_empty() {
         return Ok(());
     }
+    let literal_paths: Vec<String> = sanitized
+        .iter()
+        .map(|path| to_literal_pathspec(path))
+        .collect();
 
     let mut add_args = vec![
         "-C".to_string(),
-        repo_root.clone(),
+        canonical_repo_root.to_string_lossy().to_string(),
         "add".to_string(),
         "--".to_string(),
     ];
-    add_args.extend(sanitized.clone());
+    add_args.extend(literal_paths.clone());
 
     let add_output = Command::new("git")
         .args(add_args)
@@ -438,13 +704,13 @@ fn git_commit_paths(repo_root: String, paths: Vec<String>, message: String) -> R
 
     let mut has_staged_args = vec![
         "-C".to_string(),
-        repo_root.clone(),
+        canonical_repo_root.to_string_lossy().to_string(),
         "diff".to_string(),
         "--cached".to_string(),
         "--quiet".to_string(),
         "--".to_string(),
     ];
-    has_staged_args.extend(sanitized.clone());
+    has_staged_args.extend(literal_paths.clone());
 
     let staged_output = Command::new("git")
         .args(has_staged_args)
@@ -457,13 +723,14 @@ fn git_commit_paths(repo_root: String, paths: Vec<String>, message: String) -> R
 
     let mut commit_args = vec![
         "-C".to_string(),
-        repo_root,
+        canonical_repo_root.to_string_lossy().to_string(),
         "commit".to_string(),
         "-m".to_string(),
         message,
+        "--no-verify".to_string(),
         "--".to_string(),
     ];
-    commit_args.extend(sanitized);
+    commit_args.extend(literal_paths);
 
     let commit_output = Command::new("git")
         .args(commit_args)
@@ -480,22 +747,24 @@ fn git_commit_paths(repo_root: String, paths: Vec<String>, message: String) -> R
 
 #[tauri::command]
 fn read_environment_file(scope_uri: String, env_name: String) -> Result<Option<String>, String> {
-    let env_path = PathBuf::from(scope_uri).join(format!(".env.{}", env_name));
-    if !env_path.exists() {
-        return Ok(None);
+    if env_name.is_empty() {
+        return Err("Environment name is empty".to_string());
+    }
+    if !env_name
+        .chars()
+        .all(|char| char.is_ascii_alphanumeric() || char == '_' || char == '-' || char == '.')
+    {
+        return Err(format!("Invalid environment name: {}", env_name));
     }
 
-    let value = fs::read_to_string(&env_path)
-        .map_err(|error| format!("Failed to read {}: {}", env_path.display(), error))?;
-
-    Ok(Some(value))
+    read_scoped_text_file(scope_uri, format!(".env.{}", env_name))
 }
 
 #[tauri::command]
 fn pick_directory() -> Option<String> {
-    rfd::FileDialog::new()
-        .pick_folder()
-        .map(|path| path.to_string_lossy().to_string())
+    let picked = rfd::FileDialog::new().pick_folder()?;
+    let canonical = fs::canonicalize(&picked).unwrap_or(picked);
+    Some(canonical.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -557,9 +826,8 @@ pub fn run() {
             list_workspaces,
             discover_collections,
             list_requests,
-            read_request_text,
-            read_text_file,
-            write_text_file,
+            read_scoped_text_file,
+            write_scoped_text_file,
             detect_git_repo,
             git_commit_paths,
             read_environment_file,
@@ -568,4 +836,140 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("eshttp-{}-{}-{}", name, std::process::id(), nanos))
+    }
+
+    #[test]
+    fn parse_relative_path_rejects_parent_and_absolute_paths() {
+        assert!(parse_relative_path("../secret").is_err());
+        assert!(parse_relative_path("/etc/passwd").is_err());
+        assert!(parse_relative_path("a/../../b").is_err());
+        assert!(parse_relative_path("  ").is_err());
+    }
+
+    #[test]
+    fn sanitize_commit_paths_removes_unsafe_entries() {
+        let sanitized = sanitize_commit_paths(vec![
+            "safe/file.http".to_string(),
+            "safe/file.http".to_string(),
+            "/abs/path.http".to_string(),
+            "../escape.http".to_string(),
+            "nested/./file.http".to_string(),
+            "nested//file.http".to_string(),
+        ]);
+
+        assert_eq!(sanitized, vec!["safe/file.http".to_string()]);
+        assert_eq!(
+            to_literal_pathspec("safe/file.http"),
+            ":(literal)safe/file.http"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scoped_read_rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let root_dir = unique_temp_dir("scoped-read-root");
+        let external_dir = unique_temp_dir("scoped-read-external");
+        fs::create_dir_all(&root_dir).expect("create root dir");
+        fs::create_dir_all(&external_dir).expect("create external dir");
+
+        let external_file = external_dir.join("outside.http");
+        fs::write(&external_file, "GET https://example.com").expect("write external file");
+
+        let linked_file = root_dir.join("linked.http");
+        symlink(&external_file, &linked_file).expect("create symlink");
+
+        let root_canonical = fs::canonicalize(&root_dir).expect("canonicalize root");
+        let result = resolve_scoped_read_path(&root_canonical, "linked.http");
+        assert!(result.is_err(), "expected symlink escape to be rejected");
+
+        let _ = fs::remove_dir_all(&root_dir);
+        let _ = fs::remove_dir_all(&external_dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scoped_write_rejects_symlink_parent_escape() {
+        use std::os::unix::fs::symlink;
+
+        let root_dir = unique_temp_dir("scoped-write-root");
+        let external_dir = unique_temp_dir("scoped-write-external");
+        fs::create_dir_all(&root_dir).expect("create root dir");
+        fs::create_dir_all(&external_dir).expect("create external dir");
+
+        let linked_dir = root_dir.join("linked");
+        symlink(&external_dir, &linked_dir).expect("create linked dir");
+
+        let root_canonical = fs::canonicalize(&root_dir).expect("canonicalize root");
+        let result = resolve_scoped_write_path(&root_canonical, "linked/new.http");
+        assert!(result.is_err(), "expected symlinked parent to be rejected");
+
+        let _ = fs::remove_dir_all(&root_dir);
+        let _ = fs::remove_dir_all(&external_dir);
+    }
+
+    #[test]
+    fn scoped_write_allows_regular_path_within_root() {
+        let root_dir = unique_temp_dir("scoped-write-ok");
+        fs::create_dir_all(&root_dir).expect("create root dir");
+
+        write_scoped_text_file(
+            root_dir.to_string_lossy().to_string(),
+            "nested/request.http".to_string(),
+            "GET https://example.com".to_string(),
+        )
+        .expect("write scoped file");
+
+        let written = fs::read_to_string(root_dir.join("nested").join("request.http"))
+            .expect("read written file");
+        assert_eq!(written, "GET https://example.com");
+
+        let _ = fs::remove_dir_all(&root_dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discover_collections_ignores_symlink_files_and_dirs() {
+        use std::os::unix::fs::symlink;
+
+        let workspace_root = unique_temp_dir("discover-symlink-root");
+        let outside_dir = unique_temp_dir("discover-symlink-outside");
+        fs::create_dir_all(&workspace_root).expect("create workspace root");
+        fs::create_dir_all(&outside_dir).expect("create outside dir");
+
+        let outside_file = outside_dir.join("outside.http");
+        fs::write(&outside_file, "GET https://example.com").expect("write outside request");
+        symlink(&outside_file, workspace_root.join("linked.http")).expect("create file symlink");
+        symlink(&workspace_root, workspace_root.join("loop")).expect("create loop symlink");
+
+        let workspace = Workspace {
+            id: "workspace:test".to_string(),
+            name: "test".to_string(),
+            uri: workspace_root.to_string_lossy().to_string(),
+        };
+
+        let collections = discover_collections(workspace).expect("discover collections");
+        assert!(
+            collections.is_empty(),
+            "symlinked .http files should not produce collections"
+        );
+
+        let _ = fs::remove_dir_all(&workspace_root);
+        let _ = fs::remove_dir_all(&outside_dir);
+    }
 }
