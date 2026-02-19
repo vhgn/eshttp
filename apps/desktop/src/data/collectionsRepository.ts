@@ -287,37 +287,6 @@ async function scanWebCollections(
 function makeImportNameFromPath(path: string): string {
   return basename(path);
 }
-<<<<<<< ours
-
-function dedupePaths(paths: string[]): string[] {
-  return Array.from(
-    new Set(paths.map((entry) => normalizePath(entry).trim()).filter((entry) => entry.length > 0)),
-  );
-}
-
-function storageKindForImport(importRecord: ImportRecord): StorageKind {
-  if (importRecord.runtime === "web") {
-    return "direct";
-  }
-
-  return importRecord.storageKind === "git" ? "git" : "direct";
-}
-
-function supportsCommitForImport(importRecord: ImportRecord): boolean {
-  return importRecord.runtime === "tauri" && storageKindForImport(importRecord) === "git";
-}
-
-function pendingGitChangesForImport(importRecord: ImportRecord): number {
-  if (!supportsCommitForImport(importRecord)) {
-    return 0;
-  }
-
-  return dedupePaths(importRecord.pendingGitPaths ?? []).length;
-}
-
-function getImportStorage(record: ImportRecord): ImportStorage {
-  return record.storage ?? "filesystem";
-=======
 
 function dedupePaths(paths: string[]): string[] {
   return Array.from(
@@ -347,7 +316,6 @@ function pendingGitChangesForImport(importRecord: ImportRecord): number {
   }
 
   return dedupePaths(importRecord.pendingGitPaths ?? []).length;
->>>>>>> theirs
 }
 
 export class CollectionsRepository {
@@ -1245,29 +1213,6 @@ export class CollectionsRepository {
     };
   }
 
-<<<<<<< ours
-<<<<<<< ours
-  private async supportsExternalSync(importId: string): Promise<boolean> {
-    const importRecord = await this.getImport(importId);
-    if (!importRecord) {
-      throw new Error(`Import ${importId} not found`);
-    }
-
-    if (getImportStorage(importRecord) === "indexeddb") {
-      return false;
-    }
-
-    return importRecord.runtime === "tauri"
-      ? Boolean(importRecord.path)
-      : Boolean(importRecord.handle);
-  }
-
-  private async applySyncWrite(
-    importId: string,
-    relativePathValue: string,
-    content: string,
-  ): Promise<void> {
-=======
   private async withBackfilledTauriStorage(imports: ImportRecord[]): Promise<ImportRecord[]> {
     const updatedImports: ImportRecord[] = [];
 
@@ -1301,60 +1246,18 @@ export class CollectionsRepository {
   }
 
   private async supportsExternalSync(importId: string): Promise<boolean> {
->>>>>>> theirs
     const importRecord = await this.getImport(importId);
     if (!importRecord) {
       throw new Error(`Import ${importId} not found`);
     }
 
     if (getImportStorage(importRecord) === "indexeddb") {
-<<<<<<< ours
-      return;
-    }
-
-    if (importRecord.runtime === "tauri") {
-      if (!importRecord.path) {
-        throw new Error("Imported path is missing for tauri workspace");
-=======
-  private async withBackfilledTauriStorage(imports: ImportRecord[]): Promise<ImportRecord[]> {
-    const updatedImports: ImportRecord[] = [];
-
-    for (const importRecord of imports) {
-      if (importRecord.runtime !== "tauri" || importRecord.storageKind) {
-        updatedImports.push(importRecord);
-        continue;
->>>>>>> theirs
-      }
-
-      const storage = importRecord.path
-        ? await this.detectTauriStorage(importRecord.path)
-        : { storageKind: "direct" as const, gitRepoRoot: undefined };
-
-      const updated = await updateImportRecord(importRecord.id, {
-        storageKind: storage.storageKind,
-        gitRepoRoot: storage.gitRepoRoot,
-        pendingGitPaths: dedupePaths(importRecord.pendingGitPaths ?? []),
-      });
-
-      updatedImports.push(
-        updated ?? {
-          ...importRecord,
-          storageKind: storage.storageKind,
-          gitRepoRoot: storage.gitRepoRoot,
-          pendingGitPaths: dedupePaths(importRecord.pendingGitPaths ?? []),
-        },
-      );
-    }
-
-    return updatedImports;
-=======
       return false;
     }
 
     return importRecord.runtime === "tauri"
       ? Boolean(importRecord.path)
       : Boolean(importRecord.handle);
->>>>>>> theirs
   }
 
   private async detectTauriStorage(
@@ -1389,39 +1292,6 @@ export class CollectionsRepository {
   private toGitCommitPaths(importRecord: ImportRecord, paths: string[]): string[] {
     if (!importRecord.path || !importRecord.gitRepoRoot) {
       throw new Error("Git commit metadata is incomplete for workspace.");
-<<<<<<< ours
-    }
-
-    const commitPaths: string[] = [];
-    for (const path of dedupePaths(paths)) {
-      const workspacePath = joinFsPath(importRecord.path, path);
-      const relativeToRepo = relativePathOrNull(importRecord.gitRepoRoot, workspacePath);
-      if (!relativeToRepo || relativeToRepo === ".") {
-        throw new Error(`Path is outside git repository scope: ${path}`);
-      }
-
-      commitPaths.push(relativeToRepo);
-    }
-
-    return dedupePaths(commitPaths);
-  }
-
-  private async applySyncWrite(
-    importRecord: ImportRecord,
-    relativePathValue: string,
-    content: string,
-  ): Promise<boolean> {
-    const storage = resolveStorageOption(importRecord);
-    const check = await storage.checkSave({
-      importRecord,
-      relativePath: relativePathValue,
-      content,
-    });
-    if (!check.ok) {
-      throw new Error(check.reason);
-    }
-
-=======
     }
 
     const commitPaths: string[] = [];
@@ -1457,7 +1327,6 @@ export class CollectionsRepository {
       throw new Error(check.reason);
     }
 
->>>>>>> theirs
     await storage.save({
       importRecord,
       relativePath: relativePathValue,
