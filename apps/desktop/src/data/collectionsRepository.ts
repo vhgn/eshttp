@@ -84,6 +84,24 @@ type WebDirectoryHandle = FileSystemDirectoryHandle & {
 const SYNC_INTERVAL_MS = 2_000;
 const DEFAULT_COMMIT_MESSAGE = "chore(eshttp): sync workspace changes";
 
+interface ApiGitHubWorkspaceSnapshot {
+  owner: string;
+  repo: string;
+  branch: string;
+  workspacePath: string;
+  workspaceName: string;
+  collections: Array<{
+    relativePath: string;
+    name: string;
+    iconSvg: string | null;
+    requests: Array<{
+      fileName: string;
+      title: string;
+      text: string;
+    }>;
+  }>;
+}
+
 function normalizePath(value: string): string {
   return value.replace(/\\/g, "/");
 }
@@ -299,15 +317,20 @@ function getImportStorage(record: ImportRecord): ImportStorage {
 }
 
 function storageKindForImport(importRecord: ImportRecord): StorageKind {
-  if (importRecord.runtime === "web") {
-    return "direct";
+  if (importRecord.runtime === "web" && importRecord.storageKind === "github") {
+    return "github";
   }
 
   return importRecord.storageKind === "git" ? "git" : "direct";
 }
 
 function supportsCommitForImport(importRecord: ImportRecord): boolean {
-  return importRecord.runtime === "tauri" && storageKindForImport(importRecord) === "git";
+  const kind = storageKindForImport(importRecord);
+  if (kind === "github") {
+    return true;
+  }
+
+  return importRecord.runtime === "tauri" && kind === "git";
 }
 
 function pendingGitChangesForImport(importRecord: ImportRecord): number {
@@ -366,6 +389,103 @@ export class CollectionsRepository {
   async importDirectory(): Promise<boolean> {
     const created = await this.createWorkspace();
     return created !== null;
+  }
+
+  async importGitHubWorkspaces(): Promise<{
+    imported: number;
+    requiresAuth: boolean;
+    firstWorkspaceId: string | null;
+  }> {
+    const response = await fetch("/api/github/workspaces", {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (response.status === 401) {
+      return {
+        imported: 0,
+        requiresAuth: true,
+        firstWorkspaceId: null,
+      };
+    }
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(
+        body?.error ?? `GitHub workspace import failed with status ${response.status}`,
+      );
+    }
+
+    const payload = (await response.json()) as {
+      workspaces?: ApiGitHubWorkspaceSnapshot[];
+    };
+    const snapshots = payload.workspaces ?? [];
+
+    const existingImports = await listImports();
+    let imported = 0;
+    let firstWorkspaceId: string | null = null;
+
+    for (const snapshot of snapshots) {
+      const existing = existingImports.find(
+        (record) =>
+          record.storageKind === "github" &&
+          record.githubOwner === snapshot.owner &&
+          record.githubRepo === snapshot.repo &&
+          record.githubBranch === snapshot.branch &&
+          record.githubWorkspacePath === snapshot.workspacePath,
+      );
+      if (existing) {
+        continue;
+      }
+
+      const importId = crypto.randomUUID();
+      const importRecord: ImportRecord = {
+        id: importId,
+        name: `${snapshot.owner}/${snapshot.repo}:${snapshot.workspaceName}`,
+        runtime: "web",
+        storage: "indexeddb",
+        createdAt: Date.now(),
+        storageKind: "github",
+        pendingGitPaths: [],
+        pendingGitFileContents: {},
+        githubOwner: snapshot.owner,
+        githubRepo: snapshot.repo,
+        githubBranch: snapshot.branch,
+        githubWorkspacePath: snapshot.workspacePath,
+      };
+
+      const cache: CacheWorkspaceRecord = {
+        importId,
+        rootName: importRecord.name,
+        collections: snapshot.collections.map((collection) => ({
+          relativePath: collection.relativePath,
+          name: collection.name,
+          iconSvg: collection.iconSvg,
+          requests: collection.requests.map((request) => ({
+            fileName: request.fileName,
+            title: request.title,
+            text: request.text,
+          })),
+        })),
+      };
+
+      await putImport(importRecord);
+      await putCacheWorkspace(cache);
+      existingImports.push(importRecord);
+      imported += 1;
+      if (!firstWorkspaceId) {
+        firstWorkspaceId = makeWorkspaceId("editable", importId);
+      }
+    }
+
+    return {
+      imported,
+      requiresAuth: false,
+      firstWorkspaceId,
+    };
   }
 
   async loadWorkspaceTree(): Promise<WorkspaceTreeNode[]> {
@@ -496,6 +616,8 @@ export class CollectionsRepository {
         content: text,
         createdAt: Date.now(),
       });
+    } else {
+      await this.trackPendingGitFile(editable.importId, editable.requestRelativePath, text);
     }
 
     return {
@@ -557,6 +679,10 @@ export class CollectionsRepository {
         content: svg,
         createdAt: Date.now(),
       });
+    } else {
+      const relativeIconPath =
+        editable.relativePath === "." ? "icon.svg" : `${editable.relativePath}/icon.svg`;
+      await this.trackPendingGitFile(editable.importId, relativeIconPath, svg);
     }
 
     return {
@@ -608,6 +734,8 @@ export class CollectionsRepository {
         content: "",
         createdAt: Date.now(),
       });
+    } else {
+      await this.trackPendingGitFile(workspace.importId, `${relativePathValue}/.env.default`, "");
     }
 
     return {
@@ -686,7 +814,7 @@ export class CollectionsRepository {
     }
 
     if (!supportsCommitForImport(importRecord)) {
-      throw new Error("This workspace is not configured for git commits.");
+      throw new Error("This workspace is not configured for commit.");
     }
 
     await this.flushSyncQueue();
@@ -712,16 +840,26 @@ export class CollectionsRepository {
       };
     }
 
-    const commitPaths = this.toGitCommitPaths(refreshedImport, pendingPaths);
+    const storageKind = storageKindForImport(refreshedImport);
+    const commitPaths =
+      storageKind === "github"
+        ? pendingPaths
+        : this.toGitCommitPaths(refreshedImport, pendingPaths);
+    const commitFiles =
+      storageKind === "github"
+        ? this.buildPendingGitFiles(refreshedImport, pendingPaths)
+        : undefined;
+
     const storage = resolveStorageOption(refreshedImport);
     if (!storage.supportsCommit || !storage.checkCommit || !storage.commit) {
-      throw new Error("Storage option does not support git commit.");
+      throw new Error("Storage option does not support commit.");
     }
 
     const check = await storage.checkCommit({
       importRecord: refreshedImport,
       paths: commitPaths,
       message: commitMessage,
+      files: commitFiles,
     });
     if (!check.ok) {
       throw new Error(check.reason);
@@ -731,9 +869,14 @@ export class CollectionsRepository {
       importRecord: refreshedImport,
       paths: commitPaths,
       message: commitMessage,
+      files: commitFiles,
     });
 
-    await updateImportRecord(refreshedImport.id, { pendingGitPaths: [] });
+    await updateImportRecord(refreshedImport.id, {
+      pendingGitPaths: [],
+      pendingGitFileContents:
+        storageKind === "github" ? {} : refreshedImport.pendingGitFileContents,
+    });
 
     return {
       committedPaths: pendingPaths.length,
@@ -1296,6 +1439,47 @@ export class CollectionsRepository {
       relativePathValue,
     ]);
     await updateImportRecord(importId, { pendingGitPaths });
+  }
+
+  private async trackPendingGitFile(
+    importId: string,
+    relativePathValue: string,
+    content: string,
+  ): Promise<void> {
+    const importRecord = await this.getImport(importId);
+    if (!importRecord || storageKindForImport(importRecord) !== "github") {
+      return;
+    }
+
+    const normalizedPath = normalizePath(relativePathValue);
+    const pendingGitPaths = dedupePaths([...(importRecord.pendingGitPaths ?? []), normalizedPath]);
+    const pendingGitFileContents = {
+      ...(importRecord.pendingGitFileContents ?? {}),
+      [normalizedPath]: content,
+    };
+
+    await updateImportRecord(importId, {
+      pendingGitPaths,
+      pendingGitFileContents,
+    });
+  }
+
+  private buildPendingGitFiles(
+    importRecord: ImportRecord,
+    pendingPaths: string[],
+  ): Record<string, string> {
+    const fileContents = importRecord.pendingGitFileContents ?? {};
+    const files: Record<string, string> = {};
+
+    for (const path of dedupePaths(pendingPaths)) {
+      if (!(path in fileContents)) {
+        throw new Error(`Missing file content for pending path: ${path}`);
+      }
+
+      files[path] = fileContents[path] ?? "";
+    }
+
+    return files;
   }
 
   private toGitCommitPaths(importRecord: ImportRecord, paths: string[]): string[] {

@@ -8,6 +8,7 @@ Read these docs before editing matching areas:
 - `docs/dev/inline-monaco-placeholders.md`: inline Monaco language, placeholder completion rules, and env key wiring.
 - `docs/dev/desktop-storage-options.md`: desktop storage strategy interfaces, save checks, and Tauri git commit flow.
 - `docs/dev/desktop-tailwind-primitives.md`: Tailwind v4 setup, semantic primitive tokens, and desktop styling rules.
+- `docs/dev/desktop-vercel-github-backend.md`: Vercel API endpoints, GitHub OAuth/session model, backend commit flow, and security validation rules.
 
 Required behavior for future agents:
 - Validate docs against code before relying on them. If code and docs disagree, update docs in the same task.

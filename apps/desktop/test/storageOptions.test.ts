@@ -144,4 +144,20 @@ describe("storage options", () => {
       contents: "GET https://example.com",
     });
   });
+
+  test("resolves web github imports to github storage", () => {
+    const option = resolveStorageOption(
+      makeImport({
+        runtime: "web",
+        storageKind: "github",
+        githubOwner: "octocat",
+        githubRepo: "hello-world",
+        githubBranch: "main",
+        githubWorkspacePath: ".eshttp/workspaces/demo",
+      }),
+    );
+
+    expect(option.kind).toBe("github");
+    expect(option.supportsCommit).toBe(true);
+  });
 });
