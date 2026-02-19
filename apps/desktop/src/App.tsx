@@ -11,6 +11,7 @@ import Editor from "@monaco-editor/react";
 import type { ChangeEvent, ComponentProps } from "react";
 import { useEffect, useMemo, useState } from "react";
 import appIcon from "../src-tauri/icons/icon.png";
+import { Button } from "./components/Button";
 import { InlineMonacoInput } from "./components/InlineMonacoInput";
 import { COLLECTION_ICON_OPTIONS, svgToDataUri } from "./data/collectionIcons";
 import { createCollectionsRepository, type WorkspaceTreeNode } from "./data/collectionsRepository";
@@ -697,6 +698,8 @@ export function App() {
     try {
       const workspaceId = await repository.createWorkspace();
       if (!workspaceId) {
+        setStatusText("workspace creation canceled");
+        pushToast("Workspace creation was canceled.", "info");
         return;
       }
 
@@ -939,22 +942,14 @@ export function App() {
   const sidebarPanelClass =
     "mb-[0.9rem] rounded-panel border border-stroke-default bg-[linear-gradient(170deg,var(--surface-secondary),var(--surface-tertiary))] p-[0.72rem]";
   const controlGridClass = "mb-[0.9rem] grid gap-[0.35rem] text-[0.9rem]";
-  const subtleButtonClass =
-    "w-full rounded-control border border-[color-mix(in_srgb,var(--stroke-accent)_50%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_18%,var(--surface-tertiary))] px-[0.55rem] py-[0.45rem] text-content-primary disabled:cursor-not-allowed disabled:opacity-60";
   const controlSurfaceClass =
     "rounded-control border border-stroke-default bg-surface-secondary px-[0.55rem] py-[0.45rem] text-content-primary disabled:cursor-not-allowed disabled:opacity-60";
-  const tabButtonClass =
-    "rounded-control border border-stroke-default bg-transparent px-[0.62rem] py-[0.38rem] text-content-primary";
   const tabButtonActiveClass =
     "bg-surface-tertiary border-[color-mix(in_srgb,var(--stroke-accent)_40%,var(--stroke-default))]";
   const kvGridClass =
     "grid grid-cols-[1fr_1fr_74px_96px] items-center gap-[0.5rem] p-[0.72rem] max-[1080px]:grid-cols-1";
   const kvHeadClass = "text-[0.82rem] text-content-muted";
-  const rowActionClass =
-    "rounded-control border border-stroke-default bg-[color-mix(in_srgb,var(--state-danger)_40%,var(--surface-secondary))] px-[0.55rem] py-[0.45rem] text-content-primary";
-  const addRowClass = cn(controlSurfaceClass, "col-span-2 max-[1080px]:col-span-1");
-  const collectionControlButtonClass =
-    "rounded-[6px] border border-stroke-default bg-surface-secondary px-[0.4rem] py-[0.2rem] text-[0.72rem] text-content-muted";
+  const addRowClass = "col-span-2 max-[1080px]:col-span-1";
   const iconOptionClass =
     "grid place-items-center rounded-[6px] border border-stroke-default bg-surface-tertiary py-[0.3rem] text-content-primary";
   const editorBoxClass = "overflow-hidden rounded-[10px] border border-stroke-default";
@@ -993,9 +988,10 @@ export function App() {
                 )}
                 {node.collection.name}
               </h3>
-              <button
-                type="button"
-                className={collectionControlButtonClass}
+              <Button
+                variant="secondary"
+                size="xs"
+                className="text-content-muted"
                 onClick={() =>
                   setActiveCollectionIconEditor((current) =>
                     current === node.collection.id ? null : node.collection.id,
@@ -1003,7 +999,7 @@ export function App() {
                 }
               >
                 Icon
-              </button>
+              </Button>
             </div>
             {activeCollectionIconEditor === node.collection.id ? (
               <div className="mb-[0.45rem] mt-[0.15rem] rounded-control border border-stroke-default bg-surface-secondary p-[0.45rem]">
@@ -1012,9 +1008,10 @@ export function App() {
                     const Icon = entry.icon;
                     const isSelected = selectedIconId === entry.id;
                     return (
-                      <button
+                      <Button
                         key={entry.id}
-                        type="button"
+                        variant="secondary"
+                        size="none"
                         title={entry.label}
                         className={cn(
                           iconOptionClass,
@@ -1024,18 +1021,19 @@ export function App() {
                         onClick={() => setSelectedIconId(entry.id)}
                       >
                         <Icon size={18} weight="duotone" />
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
                 <div className="mb-[0.4rem] grid grid-cols-5 gap-[0.26rem]">
                   {accentPalette.map((entry) => (
-                    <button
+                    <Button
                       key={entry.token}
-                      type="button"
+                      variant="ghost"
+                      size="none"
                       title={entry.label}
                       className={cn(
-                        "h-[20px] w-full rounded-pill border border-stroke-default",
+                        "h-[20px] w-full rounded-pill border border-stroke-default hover:bg-transparent",
                         selectedAccentToken === entry.token &&
                           "shadow-[0_0_0_2px_color-mix(in_srgb,var(--stroke-accent)_45%,transparent)]",
                       )}
@@ -1044,13 +1042,14 @@ export function App() {
                     />
                   ))}
                 </div>
-                <button
-                  type="button"
-                  className="w-full rounded-[7px] border border-[color-mix(in_srgb,var(--stroke-accent)_50%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_15%,var(--surface-tertiary))] px-[0.4rem] py-[0.34rem] text-[0.76rem] text-content-primary"
+                <Button
+                  variant="accent"
+                  size="sm"
+                  className="w-full"
                   onClick={() => void onApplyCollectionIcon(node.collection)}
                 >
                   Apply Icon
-                </button>
+                </Button>
               </div>
             ) : null}
             {node.requests.length === 0 ? (
@@ -1059,11 +1058,12 @@ export function App() {
             {node.requests.map((request) => {
               const isSelected = selection?.request.id === request.id;
               return (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="none"
                   key={request.id}
                   className={cn(
-                    "mb-[0.35rem] w-full rounded-control border border-stroke-default bg-transparent px-[0.58rem] py-[0.46rem] text-left text-content-primary hover:bg-surface-tertiary",
+                    "mb-[0.35rem] w-full justify-start rounded-control px-[0.58rem] py-[0.46rem] text-left",
                     isSelected &&
                       "border-[color-mix(in_srgb,var(--stroke-accent)_45%,var(--stroke-default))] bg-surface-active",
                   )}
@@ -1076,7 +1076,7 @@ export function App() {
                   }
                 >
                   {request.title}
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -1126,21 +1126,23 @@ export function App() {
       </div>
 
       <aside className="flex flex-col items-center gap-[0.7rem] border-r border-stroke-default bg-[linear-gradient(190deg,var(--surface-primary),color-mix(in_srgb,var(--surface-secondary)_84%,#000))] px-[0.5rem] py-[0.72rem] max-[1080px]:flex-row max-[1080px]:justify-start max-[1080px]:overflow-x-auto max-[1080px]:border-b max-[1080px]:border-r-0 max-[1080px]:px-[0.52rem] max-[1080px]:py-[0.58rem]">
-        <button
-          type="button"
-          className="h-[42px] w-[42px] rounded-panel border border-[color-mix(in_srgb,var(--stroke-accent)_52%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_24%,var(--surface-tertiary))] text-[1.35rem] leading-none text-content-primary"
+        <Button
+          variant="accent"
+          size="icon"
+          className="border-[color-mix(in_srgb,var(--stroke-accent)_52%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_24%,var(--surface-tertiary))]"
           title="Create workspace"
           aria-label="Create workspace"
           onClick={() => void onCreateWorkspace()}
         >
           +
-        </button>
+        </Button>
         <div className="grid w-full justify-items-center gap-[0.5rem] overflow-auto pb-[0.3rem] max-[1080px]:flex max-[1080px]:w-auto max-[1080px]:gap-[0.44rem] max-[1080px]:overflow-visible max-[1080px]:pb-0">
           {workspaceTree.map((tree) => {
             const isActive = activeWorkspaceNode?.workspace.id === tree.workspace.id;
             return (
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="none"
                 key={tree.workspace.id}
                 className={cn(
                   "relative grid h-[42px] w-[42px] place-items-center rounded-[13px] border border-stroke-default bg-surface-secondary text-content-muted",
@@ -1164,7 +1166,7 @@ export function App() {
                       "bg-[color-mix(in_srgb,var(--status-error)_68%,var(--surface-tertiary))]",
                   )}
                 />
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -1177,20 +1179,20 @@ export function App() {
             <h1 className="m-0 text-[1.15rem] tracking-[0.02em]">eshttp</h1>
           </div>
           <p className={mutedTextClass}>Desktop HTTP Client</p>
-          <button
-            type="button"
-            className={cn(subtleButtonClass, "mt-[0.7rem]")}
+          <Button
+            variant="accent"
+            className="mt-[0.7rem] w-full"
             onClick={() => void onCreateWorkspace()}
           >
             Create Workspace
-          </button>
-          <button
-            type="button"
-            className="import-button"
+          </Button>
+          <Button
+            variant="accent"
+            className="mt-[0.42rem] w-full"
             onClick={() => void onImportGitHubWorkspaces()}
           >
             Import GitHub Workspaces
-          </button>
+          </Button>
 
           {activeWorkspaceNode ? (
             <>
@@ -1235,15 +1237,15 @@ export function App() {
                     beforeMount={registerMonacoThemes}
                     ariaLabel="Git commit message"
                   />
-                  <button
-                    type="button"
-                    className="w-full rounded-control border border-[color-mix(in_srgb,var(--stroke-accent)_50%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_14%,var(--surface-tertiary))] px-[0.54rem] py-[0.42rem] text-content-primary"
+                  <Button
+                    variant="accent"
+                    className="w-full"
                     onClick={() => void onCommitWorkspaceChanges()}
                   >
                     {activeWorkspaceNode.storageKind === "github"
                       ? "Commit to GitHub"
                       : "Commit Changes"}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </>
@@ -1263,14 +1265,14 @@ export function App() {
               aria-label="Collection path"
               disabled={!activeWorkspaceNode}
             />
-            <button
-              type="button"
-              className={cn(subtleButtonClass, "mt-0")}
+            <Button
+              variant="accent"
+              className="mt-0 w-full"
               onClick={() => void onCreateCollection()}
               disabled={!activeWorkspaceNode}
             >
               Create Collection
-            </button>
+            </Button>
           </div>
         </section>
 
@@ -1356,52 +1358,48 @@ export function App() {
             ariaLabel="Request URL"
           />
 
-          <button
-            type="button"
-            className="rounded-control border border-[color-mix(in_srgb,var(--stroke-accent)_55%,var(--stroke-default))] bg-stroke-accent px-[0.55rem] py-[0.45rem] font-semibold text-content-on-accent"
-            onClick={() => void onRunRequest()}
-          >
+          <Button variant="primary" className="font-semibold" onClick={() => void onRunRequest()}>
             Send
-          </button>
-          <button
-            type="button"
-            className="rounded-control border border-[color-mix(in_srgb,var(--stroke-accent)_40%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_18%,var(--surface-secondary))] px-[0.55rem] py-[0.45rem] font-semibold text-content-primary"
-            onClick={() => void onSaveRequest()}
-          >
+          </Button>
+          <Button variant="accent" className="font-semibold" onClick={() => void onSaveRequest()}>
             Save
-          </button>
+          </Button>
         </header>
 
         <section className={panelShellClass}>
           <nav className="flex gap-[0.45rem] border-b border-stroke-default p-[0.7rem]">
-            <button
-              type="button"
-              className={cn(tabButtonClass, panelTab === "params" && tabButtonActiveClass)}
+            <Button
+              variant="tab"
+              size="compact"
+              className={panelTab === "params" ? tabButtonActiveClass : undefined}
               onClick={() => setPanelTab("params")}
             >
               Params
-            </button>
-            <button
-              type="button"
-              className={cn(tabButtonClass, panelTab === "headers" && tabButtonActiveClass)}
+            </Button>
+            <Button
+              variant="tab"
+              size="compact"
+              className={panelTab === "headers" ? tabButtonActiveClass : undefined}
               onClick={() => setPanelTab("headers")}
             >
               Headers
-            </button>
-            <button
-              type="button"
-              className={cn(tabButtonClass, panelTab === "auth" && tabButtonActiveClass)}
+            </Button>
+            <Button
+              variant="tab"
+              size="compact"
+              className={panelTab === "auth" ? tabButtonActiveClass : undefined}
               onClick={() => setPanelTab("auth")}
             >
               Auth
-            </button>
-            <button
-              type="button"
-              className={cn(tabButtonClass, panelTab === "body" && tabButtonActiveClass)}
+            </Button>
+            <Button
+              variant="tab"
+              size="compact"
+              className={panelTab === "body" ? tabButtonActiveClass : undefined}
               onClick={() => setPanelTab("body")}
             >
               Body
-            </button>
+            </Button>
           </nav>
 
           {panelTab === "params" ? (
@@ -1456,25 +1454,24 @@ export function App() {
                       )
                     }
                   />
-                  <button
-                    type="button"
-                    className={rowActionClass}
+                  <Button
+                    variant="danger"
                     onClick={() =>
                       setQueryRows((current) => current.filter((entry) => entry.id !== row.id))
                     }
                   >
                     Remove
-                  </button>
+                  </Button>
                 </div>
               ))}
 
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 className={addRowClass}
                 onClick={() => setQueryRows((current) => [...current, createRow()])}
               >
                 Add Param
-              </button>
+              </Button>
             </div>
           ) : null}
 
@@ -1530,25 +1527,24 @@ export function App() {
                       )
                     }
                   />
-                  <button
-                    type="button"
-                    className={rowActionClass}
+                  <Button
+                    variant="danger"
                     onClick={() =>
                       setHeaderRows((current) => current.filter((entry) => entry.id !== row.id))
                     }
                   >
                     Remove
-                  </button>
+                  </Button>
                 </div>
               ))}
 
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 className={addRowClass}
                 onClick={() => setHeaderRows((current) => [...current, createRow()])}
               >
                 Add Header
-              </button>
+              </Button>
             </div>
           ) : null}
 
@@ -1638,20 +1634,22 @@ export function App() {
         <section className={panelShellClass}>
           <div className="flex items-center justify-between border-b border-stroke-default">
             <nav className="flex gap-[0.45rem] p-[0.55rem_0.7rem]">
-              <button
-                type="button"
-                className={cn(tabButtonClass, responseTab === "request" && tabButtonActiveClass)}
+              <Button
+                variant="tab"
+                size="compact"
+                className={responseTab === "request" ? tabButtonActiveClass : undefined}
                 onClick={() => setResponseTab("request")}
               >
                 Request
-              </button>
-              <button
-                type="button"
-                className={cn(tabButtonClass, responseTab === "response" && tabButtonActiveClass)}
+              </Button>
+              <Button
+                variant="tab"
+                size="compact"
+                className={responseTab === "response" ? tabButtonActiveClass : undefined}
                 onClick={() => setResponseTab("response")}
               >
                 Response
-              </button>
+              </Button>
             </nav>
             <p className="m-0 pr-[0.8rem] font-semibold text-content-muted">{statusText}</p>
           </div>

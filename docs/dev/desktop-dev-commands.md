@@ -14,6 +14,12 @@ This repo has two root desktop development entrypoints:
 
 Do not replace these with relative `cd .. && bun run ...` commands. The Tauri CLI launch directory is not stable across invocation styles (for example, invoking through root workspace scripts), and relative `cd` assumptions can break with `Script not found` errors.
 
+## Why desktop Vite aliases `@eshttp/core` to source
+
+`libs/core/package.json` exports `./dist/index.js` for publish/release workflows. In local workspace and Vercel desktop builds, that dist output may not exist yet when Vite starts.
+
+To keep browser/desktop builds independent from a prebuild step, `apps/desktop/vite.config.ts` maps `@eshttp/core` to `../../libs/core/src/index.ts` via `resolve.alias`. Keep this alias in place unless you also change build orchestration to always build `libs/core` first in every environment.
+
 ## Rust layout expectation
 
 `apps/desktop/src-tauri/Cargo.toml` declares a `[lib]` target named `eshttp_desktop_lib`. That requires `apps/desktop/src-tauri/src/lib.rs` to exist. Keep `src/main.rs` as a thin launcher:
