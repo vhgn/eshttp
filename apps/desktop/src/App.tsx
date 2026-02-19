@@ -7,7 +7,7 @@ import {
   parseHttpRequestText,
   type RequestFile,
   type Workspace,
-} from "eshttp-core";
+} from "@eshttp/core";
 import type { ChangeEvent, ComponentProps } from "react";
 import { useEffect, useMemo, useState } from "react";
 import appIcon from "../src-tauri/icons/icon.png";

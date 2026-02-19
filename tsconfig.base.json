@@ -7,7 +7,7 @@
     "moduleDetection": "force",
     "baseUrl": ".",
     "paths": {
-      "eshttp-core": ["libs/core/src/index.ts"]
+      "@eshttp/core": ["libs/core/src/index.ts"]
     },
     "jsx": "react-jsx",
     "strict": true,

@@ -8,7 +8,7 @@ import {
   parseEnvText,
   type RequestFile,
   type Workspace,
-} from "eshttp-core";
+} from "@eshttp/core";
 import { LocalFsCollectionSource } from "./localSource.js";
 import { createNodeFetchTransport } from "./nodeTransport.js";
 import type { HttpTransport } from "./transport.js";

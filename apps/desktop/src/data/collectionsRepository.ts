@@ -1,4 +1,4 @@
-import type { Collection, RequestFile, Workspace } from "eshttp-core";
+import type { Collection, RequestFile, Workspace } from "@eshttp/core";
 import { invokeTauri, isTauriRuntime } from "../runtime";
 import { getCollectionIconOption, renderCollectionIconSvg } from "./collectionIcons";
 import {

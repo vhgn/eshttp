@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { buildRequest, loadWorkspaceTree } from "eshttp-core";
+import { buildRequest, loadWorkspaceTree } from "@eshttp/core";
 import { createCollectionSource } from "../src/sources";
 import { createDesktopTransport } from "../src/transports";
 

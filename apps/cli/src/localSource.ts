@@ -10,7 +10,7 @@ import {
   pathIncludedByConfig,
   type RequestFile,
   type Workspace,
-} from "eshttp-core";
+} from "@eshttp/core";
 
 interface ActiveConfig {
   originDir: string;
