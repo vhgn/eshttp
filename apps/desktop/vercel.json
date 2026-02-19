@@ -30,6 +30,10 @@
       "dest": "/api/github/commit.ts"
     },
     {
+      "src": "/api/github/webhook",
+      "dest": "/api/github/webhook.ts"
+    },
+    {
       "handle": "filesystem"
     },
     {

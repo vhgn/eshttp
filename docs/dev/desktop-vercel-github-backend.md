@@ -18,6 +18,7 @@ Scope:
   - `/api/auth/github/session`
   - `/api/github/workspaces`
   - `/api/github/commit`
+  - `/api/github/webhook`
 
 ## Environment contract
 
@@ -30,6 +31,7 @@ Required vars in `apps/desktop/.env.example`:
 Optional:
 - `APP_ORIGIN` (inferred from `VERCEL_PROJECT_PRODUCTION_URL`/`VERCEL_BRANCH_URL`/`VERCEL_URL` when omitted)
 - `GITHUB_REDIRECT_URI` (defaults to `${APP_ORIGIN}/api/auth/github/callback`)
+- `GITHUB_WEBHOOK_SECRET` (required only for `/api/github/webhook` GitHub App webhook signature verification)
 - `SESSION_COOKIE_NAME`
 - `SESSION_TTL_SECONDS`
 - `OAUTH_STATE_TTL_SECONDS`
@@ -80,6 +82,16 @@ Desktop commit path:
 - `storageOptions.ts` uses backend commit for `storageKind: "github"`
 - `CollectionsRepository` stages edited file content in `pendingGitFileContents`
 - Commit clears `pendingGitPaths` and `pendingGitFileContents` on success
+
+## GitHub webhook flow
+
+`POST /api/github/webhook`:
+- Requires `GITHUB_WEBHOOK_SECRET` to be configured
+- Requires `X-Hub-Signature-256` and validates HMAC SHA-256 against the raw request payload
+- Requires `X-GitHub-Event` header
+- Parses JSON payload and returns:
+  - `200` for `ping` events
+  - `202` for other accepted events
 
 ## Test notes
 
