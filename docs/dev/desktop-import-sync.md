@@ -24,10 +24,24 @@ Both appear in `WorkspaceTreeNode[]` from `loadWorkspaceTree()`. Sync status is 
 - `pending`: queued ops exist.
 - `error`: at least one queued op has `error`.
 
+Each collection node now also carries `relativePath` so UI layers can render path-aware trees without parsing synthetic IDs.
+
 IDs are synthetic and stable per import:
 - workspace: `workspace:<mode>:<importId>`
 - collection: `collection:<mode>:<importId>:<relativePath>`
 - request: `request:<mode>:<importId>:<relativePath>:<fileName>`
+
+## Create flow
+
+`createWorkspace()` creates a new import record (directory picker in both runtimes) and returns the readonly workspace id.
+
+`createCollection(workspaceId, collectionPath)`:
+1. Normalizes a relative path (no empty path, no `.` / `..` segments).
+2. Ensures editable cache exists for the import.
+3. Adds the collection to cached workspace state.
+4. Enqueues a sync write for `<collectionPath>/.env.default` with empty content.
+
+Because collection discovery requires `.http` files, newly created collections are guaranteed to appear in editable view immediately (cache-backed), while readonly discovery will include them once request files exist on disk.
 
 ## Save flow
 

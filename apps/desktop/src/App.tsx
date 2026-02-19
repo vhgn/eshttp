@@ -23,6 +23,14 @@ interface Selection {
   request: RequestFile;
 }
 
+interface CollectionTreeBranch {
+  key: string;
+  label: string;
+  relativePath: string;
+  collectionNode: WorkspaceTreeNode["collections"][number] | null;
+  children: CollectionTreeBranch[];
+}
+
 type ThemeName = "black" | "light" | "soft" | "gruvbox";
 type BodyMode = "editor" | "file";
 type PayloadLanguage = "json" | "graphql";
@@ -369,12 +377,83 @@ function findSelectionByLocator(
   return null;
 }
 
+function buildCollectionTree(
+  collections: WorkspaceTreeNode["collections"],
+): CollectionTreeBranch[] {
+  interface DraftBranch {
+    label: string;
+    relativePath: string;
+    collectionNode: WorkspaceTreeNode["collections"][number] | null;
+    children: Map<string, DraftBranch>;
+  }
+
+  const root: DraftBranch = {
+    label: "",
+    relativePath: ".",
+    collectionNode: null,
+    children: new Map(),
+  };
+
+  for (const node of collections) {
+    const segments = node.relativePath === "." ? [] : node.relativePath.split("/").filter(Boolean);
+    let current = root;
+    let currentPath = ".";
+
+    for (const segment of segments) {
+      currentPath = currentPath === "." ? segment : `${currentPath}/${segment}`;
+      const existing = current.children.get(segment);
+      if (existing) {
+        current = existing;
+        continue;
+      }
+
+      const next: DraftBranch = {
+        label: segment,
+        relativePath: currentPath,
+        collectionNode: null,
+        children: new Map(),
+      };
+      current.children.set(segment, next);
+      current = next;
+    }
+
+    current.collectionNode = node;
+  }
+
+  const sortDrafts = (left: DraftBranch, right: DraftBranch) =>
+    left.relativePath.localeCompare(right.relativePath);
+
+  const toBranch = (draft: DraftBranch): CollectionTreeBranch => ({
+    key: draft.relativePath === "." ? "root" : draft.relativePath,
+    label: draft.label,
+    relativePath: draft.relativePath,
+    collectionNode: draft.collectionNode,
+    children: Array.from(draft.children.values()).sort(sortDrafts).map(toBranch),
+  });
+
+  if (root.collectionNode) {
+    return [
+      {
+        key: "root",
+        label: root.collectionNode.collection.name,
+        relativePath: ".",
+        collectionNode: root.collectionNode,
+        children: Array.from(root.children.values()).sort(sortDrafts).map(toBranch),
+      },
+    ];
+  }
+
+  return Array.from(root.children.values()).sort(sortDrafts).map(toBranch);
+}
+
 export function App() {
   const repository = useMemo(() => createCollectionsRepository(), []);
   const transport = useMemo(() => createDesktopTransport(), []);
 
   const [envName, setEnvName] = useState("default");
   const [workspaceTree, setWorkspaceTree] = useState<WorkspaceTreeNode[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [newCollectionPath, setNewCollectionPath] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
   const [activeCollectionIconEditor, setActiveCollectionIconEditor] = useState<string | null>(null);
   const [selectedIconId, setSelectedIconId] = useState(COLLECTION_ICON_OPTIONS[0]?.id ?? "folder");
@@ -402,6 +481,17 @@ export function App() {
   const [requestPreview, setRequestPreview] = useState("GET https://httpbin.org/get");
 
   const accentPalette = ACCENTS_BY_THEME[themeName];
+  const activeWorkspaceNode = useMemo(
+    () =>
+      workspaceTree.find((node) => node.workspace.id === activeWorkspaceId) ??
+      workspaceTree[0] ??
+      null,
+    [workspaceTree, activeWorkspaceId],
+  );
+  const collectionTree = useMemo(
+    () => (activeWorkspaceNode ? buildCollectionTree(activeWorkspaceNode.collections) : []),
+    [activeWorkspaceNode],
+  );
 
   async function refreshWorkspaceTree(locator?: SelectionLocator): Promise<WorkspaceTreeNode[]> {
     const tree = await repository.loadWorkspaceTree();
@@ -436,6 +526,31 @@ export function App() {
       repository.stopSyncLoop();
     };
   }, [repository]);
+
+  useEffect(() => {
+    if (workspaceTree.length === 0) {
+      setActiveWorkspaceId(null);
+      return;
+    }
+
+    setActiveWorkspaceId((current) => {
+      if (current && workspaceTree.some((entry) => entry.workspace.id === current)) {
+        return current;
+      }
+
+      return workspaceTree[0]?.workspace.id ?? null;
+    });
+  }, [workspaceTree]);
+
+  useEffect(() => {
+    if (!selection || !activeWorkspaceNode) {
+      return;
+    }
+
+    if (selection.workspace.id !== activeWorkspaceNode.workspace.id) {
+      setSelection(null);
+    }
+  }, [selection, activeWorkspaceNode]);
 
   useEffect(() => {
     const onBeforeUnload = () => {
@@ -498,6 +613,7 @@ export function App() {
 
   async function onSelectRequest(nextSelection: Selection) {
     setSelection(nextSelection);
+    setActiveWorkspaceId(nextSelection.workspace.id);
 
     const text = await repository.readRequestText(nextSelection.request.id);
     try {
@@ -565,14 +681,46 @@ export function App() {
     setFileBody(contents);
   }
 
-  async function onImportDirectory() {
+  async function onCreateWorkspace() {
     try {
-      const imported = await repository.importDirectory();
-      if (!imported) {
+      const workspaceId = await repository.createWorkspace();
+      if (!workspaceId) {
         return;
       }
 
       await refreshWorkspaceTree();
+      setActiveWorkspaceId(workspaceId);
+      setStatusText("workspace created");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusText("error");
+      setResponseText(message);
+      setResponseTab("response");
+    }
+  }
+
+  async function onCreateCollection() {
+    if (!activeWorkspaceNode) {
+      setStatusText("error");
+      setResponseText("Create or select a workspace before adding a collection.");
+      setResponseTab("response");
+      return;
+    }
+
+    const nextPath = newCollectionPath.trim();
+    if (!nextPath) {
+      setStatusText("error");
+      setResponseText("Collection path is required.");
+      setResponseTab("response");
+      return;
+    }
+
+    try {
+      const result = await repository.createCollection(activeWorkspaceNode.workspace.id, nextPath);
+      await refreshWorkspaceTree();
+      setActiveWorkspaceId(result.workspaceId);
+      setNewCollectionPath("");
+      setStatusText("collection created");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
@@ -696,8 +844,161 @@ export function App() {
 
   const monacoTheme = MONACO_THEME_BY_APP_THEME[themeName];
 
+  function renderCollectionBranch(branch: CollectionTreeBranch, workspace: Workspace) {
+    const node = branch.collectionNode;
+    const hasSelectedRequest = node?.requests.some(
+      (request) => request.id === selection?.request.id,
+    );
+
+    return (
+      <div key={`branch:${branch.key}`} className="collection-branch">
+        {node ? (
+          <div className="collection-card">
+            <div className="collection-head">
+              <h3>
+                {node.iconSvg ? (
+                  <img
+                    className="collection-icon"
+                    src={svgToDataUri(node.iconSvg)}
+                    alt=""
+                    aria-hidden
+                  />
+                ) : (
+                  <span className="collection-icon-fallback" aria-hidden>
+                    ◇
+                  </span>
+                )}
+                {node.collection.name}
+              </h3>
+              <button
+                type="button"
+                className="collection-icon-action"
+                onClick={() =>
+                  setActiveCollectionIconEditor((current) =>
+                    current === node.collection.id ? null : node.collection.id,
+                  )
+                }
+              >
+                Icon
+              </button>
+            </div>
+            {activeCollectionIconEditor === node.collection.id ? (
+              <div className="icon-picker">
+                <div className="icon-grid">
+                  {COLLECTION_ICON_OPTIONS.map((entry) => {
+                    const Icon = entry.icon;
+                    const isSelected = selectedIconId === entry.id;
+                    return (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        title={entry.label}
+                        className={isSelected ? "icon-option selected" : "icon-option"}
+                        onClick={() => setSelectedIconId(entry.id)}
+                      >
+                        <Icon size={18} weight="duotone" />
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="color-grid">
+                  {accentPalette.map((entry) => (
+                    <button
+                      key={entry.token}
+                      type="button"
+                      title={entry.label}
+                      className={
+                        selectedAccentToken === entry.token
+                          ? "accent-option selected"
+                          : "accent-option"
+                      }
+                      style={{ backgroundColor: entry.value }}
+                      onClick={() => setSelectedAccentToken(entry.token)}
+                    />
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="apply-icon"
+                  onClick={() => void onApplyCollectionIcon(node.collection)}
+                >
+                  Apply Icon
+                </button>
+              </div>
+            ) : null}
+            {node.requests.length === 0 ? <p className="tree-empty">No requests yet.</p> : null}
+            {node.requests.map((request) => {
+              const isSelected = selection?.request.id === request.id;
+              return (
+                <button
+                  type="button"
+                  key={request.id}
+                  className={isSelected ? "request-button selected" : "request-button"}
+                  onClick={() =>
+                    void onSelectRequest({
+                      workspace,
+                      collection: node.collection,
+                      request,
+                    })
+                  }
+                >
+                  {request.title}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="tree-branch-label">{branch.label}</p>
+        )}
+
+        {branch.children.length > 0 ? (
+          <div
+            className={
+              hasSelectedRequest
+                ? "tree-branch-children tree-branch-children-selected"
+                : "tree-branch-children"
+            }
+          >
+            {branch.children.map((child) => renderCollectionBranch(child, workspace))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell" data-theme={themeName}>
+      <aside className="workspace-rail">
+        <button
+          type="button"
+          className="workspace-create"
+          title="Create workspace"
+          aria-label="Create workspace"
+          onClick={() => void onCreateWorkspace()}
+        >
+          +
+        </button>
+        <div className="workspace-list">
+          {workspaceTree.map((tree) => {
+            const isActive = activeWorkspaceNode?.workspace.id === tree.workspace.id;
+            return (
+              <button
+                type="button"
+                key={tree.workspace.id}
+                className={isActive ? "workspace-pill active" : "workspace-pill"}
+                title={tree.workspace.name}
+                onClick={() => setActiveWorkspaceId(tree.workspace.id)}
+              >
+                <span className="workspace-pill-name">
+                  {tree.workspace.name.slice(0, 2).toUpperCase()}
+                </span>
+                <span className={`workspace-pill-sync ${tree.syncState}`} />
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+
       <aside className="sidebar">
         <div className="sidebar-head">
           <div className="app-brand">
@@ -705,10 +1006,47 @@ export function App() {
             <h1>eshttp</h1>
           </div>
           <p className="muted">Desktop HTTP Client</p>
-          <button type="button" className="import-button" onClick={() => void onImportDirectory()}>
-            Import Directory
+          <button type="button" className="import-button" onClick={() => void onCreateWorkspace()}>
+            Create Workspace
           </button>
+
+          {activeWorkspaceNode ? (
+            <div className="workspace-head">
+              <h2>{activeWorkspaceNode.workspace.name}</h2>
+              <div className="workspace-tags">
+                <span className={`tag ${activeWorkspaceNode.mode}`}>
+                  {activeWorkspaceNode.mode}
+                </span>
+                <span className={`tag ${activeWorkspaceNode.syncState}`}>
+                  {activeWorkspaceNode.syncState}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <p className="muted">No workspaces yet.</p>
+          )}
         </div>
+
+        <section className="collection-create-panel">
+          <h2>Create Collection</h2>
+          <div className="collection-create">
+            <input
+              value={newCollectionPath}
+              onChange={(event) => setNewCollectionPath(event.target.value)}
+              placeholder="api/users"
+              aria-label="Collection path"
+              disabled={!activeWorkspaceNode}
+            />
+            <button
+              type="button"
+              className="import-button"
+              onClick={() => void onCreateCollection()}
+              disabled={!activeWorkspaceNode}
+            >
+              Create Collection
+            </button>
+          </div>
+        </section>
 
         <section className="settings-panel">
           <h2>Settings</h2>
@@ -749,112 +1087,17 @@ export function App() {
         </section>
 
         <div className="tree">
-          {workspaceTree.map((tree) => (
-            <section key={tree.workspace.id}>
-              <div className="workspace-head">
-                <h2>{tree.workspace.name}</h2>
-                <div className="workspace-tags">
-                  <span className={`tag ${tree.mode}`}>{tree.mode}</span>
-                  <span className={`tag ${tree.syncState}`}>{tree.syncState}</span>
-                </div>
-              </div>
-              {tree.collections.map((node) => (
-                <div key={node.collection.id}>
-                  <div className="collection-head">
-                    <h3>
-                      {node.iconSvg ? (
-                        <img
-                          className="collection-icon"
-                          src={svgToDataUri(node.iconSvg)}
-                          alt=""
-                          aria-hidden
-                        />
-                      ) : (
-                        <span className="collection-icon-fallback" aria-hidden>
-                          ◇
-                        </span>
-                      )}
-                      {node.collection.name}
-                    </h3>
-                    <button
-                      type="button"
-                      className="collection-icon-action"
-                      onClick={() =>
-                        setActiveCollectionIconEditor((current) =>
-                          current === node.collection.id ? null : node.collection.id,
-                        )
-                      }
-                    >
-                      Icon
-                    </button>
-                  </div>
-                  {activeCollectionIconEditor === node.collection.id ? (
-                    <div className="icon-picker">
-                      <div className="icon-grid">
-                        {COLLECTION_ICON_OPTIONS.map((entry) => {
-                          const Icon = entry.icon;
-                          const isSelected = selectedIconId === entry.id;
-                          return (
-                            <button
-                              key={entry.id}
-                              type="button"
-                              title={entry.label}
-                              className={isSelected ? "icon-option selected" : "icon-option"}
-                              onClick={() => setSelectedIconId(entry.id)}
-                            >
-                              <Icon size={18} weight="duotone" />
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="color-grid">
-                        {accentPalette.map((entry) => (
-                          <button
-                            key={entry.token}
-                            type="button"
-                            title={entry.label}
-                            className={
-                              selectedAccentToken === entry.token
-                                ? "accent-option selected"
-                                : "accent-option"
-                            }
-                            style={{ backgroundColor: entry.value }}
-                            onClick={() => setSelectedAccentToken(entry.token)}
-                          />
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        className="apply-icon"
-                        onClick={() => void onApplyCollectionIcon(node.collection)}
-                      >
-                        Apply Icon
-                      </button>
-                    </div>
-                  ) : null}
-                  {node.requests.map((request) => {
-                    const isSelected = selection?.request.id === request.id;
-                    return (
-                      <button
-                        type="button"
-                        key={request.id}
-                        className={isSelected ? "selected" : undefined}
-                        onClick={() =>
-                          void onSelectRequest({
-                            workspace: tree.workspace,
-                            collection: node.collection,
-                            request,
-                          })
-                        }
-                      >
-                        {request.title}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            </section>
-          ))}
+          {activeWorkspaceNode ? (
+            collectionTree.length > 0 ? (
+              collectionTree.map((branch) =>
+                renderCollectionBranch(branch, activeWorkspaceNode.workspace),
+              )
+            ) : (
+              <p className="tree-empty">No collections yet.</p>
+            )
+          ) : (
+            <p className="tree-empty">Create a workspace to start.</p>
+          )}
         </div>
       </aside>
 

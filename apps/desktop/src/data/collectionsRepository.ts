@@ -25,6 +25,7 @@ export interface WorkspaceTreeNode {
   importId: string;
   syncState: SyncState;
   collections: Array<{
+    relativePath: string;
     collection: Collection;
     iconSvg: string | null;
     requests: RequestFile[];
@@ -113,6 +114,28 @@ function relativePath(rootPath: string, valuePath: string): string {
   }
 
   return value.slice(root.length + 1);
+}
+
+function normalizeCollectionRelativePath(path: string): string | null {
+  const normalized = normalizePath(path).replace(/^\/+|\/+$/g, "");
+  if (!normalized || normalized === ".") {
+    return null;
+  }
+
+  const segments = normalized
+    .split("/")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (segments.length === 0) {
+    return null;
+  }
+
+  if (segments.some((entry) => entry === "." || entry === "..")) {
+    return null;
+  }
+
+  return segments.join("/");
 }
 
 function makeWorkspaceId(mode: WorkspaceMode, importId: string): string {
@@ -324,16 +347,21 @@ export class CollectionsRepository {
     this.syncLoop = null;
   }
 
-  async importDirectory(): Promise<boolean> {
+  async createWorkspace(): Promise<string | null> {
     const record =
       this.runtime === "tauri" ? await this.importFromTauri() : await this.importFromWebPicker();
 
     if (!record) {
-      return false;
+      return null;
     }
 
     await putImport(record);
-    return true;
+    return makeWorkspaceId("readonly", record.id);
+  }
+
+  async importDirectory(): Promise<boolean> {
+    const created = await this.createWorkspace();
+    return created !== null;
   }
 
   async loadWorkspaceTree(): Promise<WorkspaceTreeNode[]> {
@@ -525,6 +553,55 @@ export class CollectionsRepository {
     };
   }
 
+  async createCollection(
+    workspaceId: string,
+    collectionPath: string,
+  ): Promise<{ workspaceId: string; collectionId: string }> {
+    const workspace = this.workspaceIndex.get(workspaceId);
+    if (!workspace) {
+      throw new Error("Workspace not found in workspace tree");
+    }
+
+    const relativePathValue = normalizeCollectionRelativePath(collectionPath);
+    if (!relativePathValue) {
+      throw new Error("Collection path must be a non-empty relative path.");
+    }
+
+    await this.ensureEditableWorkspace(workspace.importId);
+
+    const cache = await getCacheWorkspace(workspace.importId);
+    if (!cache) {
+      throw new Error("Failed to initialize editable cache workspace");
+    }
+
+    if (cache.collections.some((entry) => entry.relativePath === relativePathValue)) {
+      throw new Error(`Collection already exists at: ${relativePathValue}`);
+    }
+
+    cache.collections.push({
+      relativePath: relativePathValue,
+      name: relativePathValue,
+      requests: [],
+      iconSvg: null,
+    });
+    cache.collections.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+    await putCacheWorkspace(cache);
+
+    await putSyncOp({
+      id: crypto.randomUUID(),
+      importId: workspace.importId,
+      type: "write",
+      relativePath: `${relativePathValue}/.env.default`,
+      content: "",
+      createdAt: Date.now(),
+    });
+
+    return {
+      workspaceId: makeWorkspaceId("editable", workspace.importId),
+      collectionId: makeCollectionId("editable", workspace.importId, relativePathValue),
+    };
+  }
+
   async readWorkspaceEnvironment(workspaceId: string, envName: string): Promise<string | null> {
     const workspace = this.workspaceIndex.get(workspaceId);
     if (!workspace) {
@@ -682,6 +759,7 @@ export class CollectionsRepository {
       const iconSvg = await this.readDesktopOptionalText(iconPath);
 
       collections.push({
+        relativePath: relativePathValue,
         collection,
         iconSvg,
         requests,
@@ -766,6 +844,7 @@ export class CollectionsRepository {
       });
 
       collections.push({
+        relativePath: snapshot.relativePath,
         collection,
         iconSvg: snapshot.iconSvg,
         requests,
@@ -856,6 +935,7 @@ export class CollectionsRepository {
       });
 
       return {
+        relativePath: entry.relativePath,
         collection,
         iconSvg: entry.iconSvg,
         requests,

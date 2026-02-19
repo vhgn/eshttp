@@ -26,7 +26,7 @@ body {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 286px 1fr;
+  grid-template-columns: 78px 316px 1fr;
   background: var(--bg);
 }
 
@@ -78,6 +78,87 @@ select {
   font: inherit;
 }
 
+.workspace-rail {
+  border-right: 1px solid var(--line);
+  background: linear-gradient(
+    190deg,
+    var(--surface),
+    color-mix(in srgb, var(--surface-2) 84%, #000)
+  );
+  padding: 0.72rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.workspace-create {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--focus) 52%, var(--line));
+  background: color-mix(in srgb, var(--focus) 24%, var(--surface-3));
+  color: var(--ink);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.workspace-list {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  overflow: auto;
+  padding-bottom: 0.3rem;
+}
+
+.workspace-pill {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.workspace-pill.active {
+  border-color: color-mix(in srgb, var(--focus) 58%, var(--line));
+  background: color-mix(in srgb, var(--focus) 20%, var(--surface-2));
+  color: var(--ink);
+}
+
+.workspace-pill-name {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.workspace-pill-sync {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+}
+
+.workspace-pill-sync.synced {
+  background: color-mix(in srgb, var(--focus) 70%, var(--surface-3));
+}
+
+.workspace-pill-sync.pending {
+  background: color-mix(in srgb, #f3c26b 65%, var(--surface-3));
+}
+
+.workspace-pill-sync.error {
+  background: color-mix(in srgb, #ff8f8f 68%, var(--surface-3));
+}
+
 .sidebar {
   border-right: 1px solid var(--line);
   background: linear-gradient(170deg, var(--surface), var(--surface-2));
@@ -107,6 +188,32 @@ select {
   letter-spacing: 0.02em;
 }
 
+.collection-create-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(170deg, var(--surface-2), var(--surface-3));
+  padding: 0.72rem;
+  margin-bottom: 0.9rem;
+}
+
+.collection-create-panel h2 {
+  margin: 0 0 0.56rem;
+  font-size: 0.9rem;
+}
+
+.collection-create {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.collection-create input {
+  border: 1px solid var(--line);
+  background: var(--surface-3);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.45rem 0.58rem;
+}
+
 .import-button {
   margin-top: 0.7rem;
   width: 100%;
@@ -115,6 +222,10 @@ select {
   background: color-mix(in srgb, var(--focus) 18%, var(--surface-3));
   color: var(--ink);
   padding: 0.45rem 0.55rem;
+}
+
+.collection-create .import-button {
+  margin-top: 0;
 }
 
 .muted {
@@ -178,9 +289,8 @@ select {
   accent-color: var(--focus);
 }
 
-.tree h2,
 .tree h3 {
-  margin: 0.75rem 0 0.4rem;
+  margin: 0;
   font-size: 0.9rem;
 }
 
@@ -197,6 +307,12 @@ select {
   align-items: baseline;
   justify-content: space-between;
   gap: 0.4rem;
+  margin-top: 0.66rem;
+}
+
+.workspace-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
 }
 
 .workspace-tags {
@@ -314,7 +430,50 @@ select {
   font-size: 0.76rem;
 }
 
-.tree button {
+.tree {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.collection-branch {
+  display: grid;
+  gap: 0.36rem;
+}
+
+.collection-card {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-2) 86%, transparent);
+  padding: 0.45rem;
+}
+
+.tree-branch-label {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tree-branch-children {
+  border-left: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  margin-left: 0.55rem;
+  padding-left: 0.55rem;
+  display: grid;
+  gap: 0.36rem;
+}
+
+.tree-branch-children-selected {
+  border-left-color: color-mix(in srgb, var(--focus) 45%, var(--line));
+}
+
+.tree-empty {
+  margin: 0.28rem 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.tree .request-button {
   width: 100%;
   text-align: left;
   border: 1px solid var(--line);
@@ -325,11 +484,11 @@ select {
   margin-bottom: 0.35rem;
 }
 
-.tree button:hover {
+.tree .request-button:hover {
   background: var(--surface-3);
 }
 
-.tree button.selected {
+.tree .request-button.selected {
   background: var(--active);
   border-color: color-mix(in srgb, var(--focus) 45%, var(--line));
 }
@@ -552,12 +711,31 @@ pre {
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+
+  .workspace-rail {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 0.58rem 0.52rem;
+  }
+
+  .workspace-list {
+    display: flex;
+    gap: 0.44rem;
+    width: auto;
+    overflow: visible;
+    padding-bottom: 0;
   }
 
   .sidebar {
     border-right: none;
     border-bottom: 1px solid var(--line);
-    max-height: 36vh;
+    max-height: 42vh;
   }
 
   .content {
