@@ -30,7 +30,16 @@ export function InlineMonacoInput({
   beforeMount,
 }: InlineMonacoInputProps) {
   const normalizedValue = sanitizeSingleLine(value);
-  const classes = className ? `inline-monaco-input ${className}` : "inline-monaco-input";
+  const classes = [
+    "inline-monaco-root min-h-[34px] overflow-hidden rounded-control border border-stroke-default",
+    "bg-[var(--inline-input-bg,var(--surface-secondary))] text-content-primary",
+    "transition-[border-color,box-shadow] focus-within:border-stroke-accent",
+    "focus-within:shadow-[0_0_0_1px_color-mix(in_srgb,var(--stroke-accent)_34%,transparent)]",
+    disabled ? "opacity-80" : "",
+    className ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   function onBeforeMount(monaco: Monaco) {
     registerInlineLanguage(monaco);
