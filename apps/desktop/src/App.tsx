@@ -709,6 +709,42 @@ export function App() {
     }
   }
 
+  function startGitHubAuth(intent: "read" | "write"): void {
+    const params = new URLSearchParams({
+      intent,
+      returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    });
+    window.location.assign(`/api/auth/github/start?${params.toString()}`);
+  }
+
+  async function onImportGitHubWorkspaces() {
+    try {
+      const result = await repository.importGitHubWorkspaces();
+      if (result.requiresAuth) {
+        startGitHubAuth("read");
+        return;
+      }
+
+      if (result.imported === 0) {
+        setStatusText("no github workspaces");
+        pushToast("No GitHub workspaces found under .eshttp/workspaces.", "info");
+        return;
+      }
+
+      await refreshWorkspaceTree();
+      if (result.firstWorkspaceId) {
+        setActiveWorkspaceId(result.firstWorkspaceId);
+      }
+      setStatusText(
+        `imported ${result.imported} github workspace${result.imported === 1 ? "" : "s"}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusText("error");
+      pushToast(message);
+    }
+  }
+
   async function onCreateCollection() {
     if (!activeWorkspaceNode) {
       setStatusText("error");
@@ -766,7 +802,17 @@ export function App() {
       );
       setResponseTab("response");
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const fallbackMessage = error instanceof Error ? error.message : String(error);
+      const errorWithMetadata = error as Error & { code?: string; reauthUrl?: string };
+      if (errorWithMetadata.code === "GITHUB_REAUTH_REQUIRED" && errorWithMetadata.reauthUrl) {
+        setStatusText("reauthentication required");
+        setResponseText("Write access is required. Redirecting to GitHub authorization...");
+        setResponseTab("response");
+        window.location.assign(errorWithMetadata.reauthUrl);
+        return;
+      }
+
+      const message = fallbackMessage;
       setStatusText("error");
       setResponseText(message);
       setResponseTab("response");
@@ -1065,6 +1111,13 @@ export function App() {
           <button type="button" className="import-button" onClick={() => void onCreateWorkspace()}>
             Create Workspace
           </button>
+          <button
+            type="button"
+            className="import-button"
+            onClick={() => void onImportGitHubWorkspaces()}
+          >
+            Import GitHub Workspaces
+          </button>
 
           {activeWorkspaceNode ? (
             <>
@@ -1082,7 +1135,10 @@ export function App() {
               {activeWorkspaceNode.supportsCommit ? (
                 <div className="git-commit-panel">
                   <p className="git-commit-meta">
-                    Git storage · {activeWorkspaceNode.pendingGitChanges} pending
+                    {activeWorkspaceNode.storageKind === "github"
+                      ? "GitHub backend"
+                      : "Git storage"}{" "}
+                    · {activeWorkspaceNode.pendingGitChanges} pending
                   </p>
                   <InlineMonacoInput
                     value={commitMessage}
@@ -1097,7 +1153,9 @@ export function App() {
                     className="git-commit-button"
                     onClick={() => void onCommitWorkspaceChanges()}
                   >
-                    Commit Changes
+                    {activeWorkspaceNode.storageKind === "github"
+                      ? "Commit to GitHub"
+                      : "Commit Changes"}
                   </button>
                 </div>
               ) : null}

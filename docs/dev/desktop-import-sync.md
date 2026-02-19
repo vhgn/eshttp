@@ -19,9 +19,11 @@ Imports can also set `ImportRecord.storage`:
 Imports are persisted in IndexedDB (`imports` store). Cache snapshots are stored in `workspace_cache`. Pending writes are stored in `sync_queue`.
 
 Each import can now persist storage metadata:
-- `storageKind`: `"direct"` or `"git"`
+- `storageKind`: `"direct"` or `"git"` or `"github"`
 - `gitRepoRoot`: Tauri git repository root (git storage only)
 - `pendingGitPaths`: deduped relative paths written by eshttp and waiting for commit
+- `pendingGitFileContents`: cached text keyed by relative path (github storage only)
+- `githubOwner` / `githubRepo` / `githubBranch` / `githubWorkspacePath` (github storage only)
 
 Tauri imports are auto-detected on creation:
 - inside git repo -> `storageKind: "git"`
@@ -58,6 +60,12 @@ IDs are synthetic and stable per import:
 - `tauri` and web with File System Access API: uses directory picker and returns readonly workspace id.
 - web without File System Access API: falls back to an IndexedDB-only workspace and returns editable workspace id.
 
+`importGitHubWorkspaces()` (web runtime):
+1. Calls backend `GET /api/github/workspaces`.
+2. Converts returned snapshots into `ImportRecord` entries with `storageKind: "github"` and `storage: "indexeddb"`.
+3. Persists editable cache snapshots immediately.
+4. Returns imported count and first editable workspace id for selection.
+
 `createCollection(workspaceId, collectionPath)`:
 1. Normalizes a relative path (no empty path, no `.` / `..` segments).
 2. Ensures editable cache exists for the import.
@@ -73,12 +81,14 @@ Because collection discovery requires `.http` files, newly created collections a
 2. If request is readonly, create editable cache first (`ensureEditableWorkspace`).
 3. Update cached request text in `workspace_cache`.
 4. Enqueue sync op (`type: "write"`) in `sync_queue` only for filesystem-backed imports.
+5. For github-backed imports, update `pendingGitPaths` + `pendingGitFileContents` (no sync queue write).
 
 Writes are asynchronous. The UI may show pending until `flushSyncQueue()` applies ops.
 
-Save behavior is unchanged by git storage:
+Save behavior by storage:
 - `Save` writes files (through sync queue)
 - `Save` does not auto-commit
+- github-backed `Save` stages content in IndexedDB for later backend commit
 
 ## Sync loop
 
@@ -96,17 +106,18 @@ Strategy behavior:
 - `tauri + direct`: `write_text_file`
 - `tauri + git`: `write_text_file` and track changed path in `pendingGitPaths`
 - `web + direct`: File System Access permission check + write through handles
+- `web + github`: no sync writes (commit-only backend path)
 
-## Commit flow (Tauri git only)
+## Commit flow
 
 `commitWorkspaceChanges(workspaceId, message?)`:
 1. Verify workspace storage supports commit.
 2. Flush sync queue first.
 3. Block commit if pending/error sync ops remain.
 4. Read `pendingGitPaths`; if empty, no-op success.
-5. Convert workspace-relative pending paths to git-repo-relative paths.
-6. Call `git_commit_paths` with commit message.
-7. Clear `pendingGitPaths` on success.
+5. For tauri git: convert workspace-relative pending paths to git-repo-relative paths and call `git_commit_paths`.
+6. For web github: use `pendingGitFileContents` and call backend `/api/github/commit`.
+7. Clear pending path/content fields on success.
 
 Default message when empty:
 - `chore(eshttp): sync workspace changes`
@@ -132,3 +143,7 @@ Tauri commands used by repository:
 - `read_environment_file`
 
 In web runtime, analogous behavior is implemented directly in browser APIs (`showDirectoryPicker`, directory handles, file handles).
+
+GitHub backend endpoints used by repository/storage options:
+- `GET /api/github/workspaces`
+- `POST /api/github/commit`

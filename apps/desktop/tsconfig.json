@@ -2,10 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
-    "types": ["vite/client", "bun"],
+    "types": ["vite/client", "bun", "node"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "api", "vite.config.ts"]
 }

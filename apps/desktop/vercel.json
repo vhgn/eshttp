@@ -1,0 +1,41 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "bun run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 30
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/auth/github/start",
+      "dest": "/api/auth/github/start.ts"
+    },
+    {
+      "src": "/api/auth/github/callback",
+      "dest": "/api/auth/github/callback.ts"
+    },
+    {
+      "src": "/api/auth/github/session",
+      "dest": "/api/auth/github/session.ts"
+    },
+    {
+      "src": "/api/github/workspaces",
+      "dest": "/api/github/workspaces.ts"
+    },
+    {
+      "src": "/api/github/commit",
+      "dest": "/api/github/commit.ts"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}

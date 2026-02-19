@@ -9,9 +9,14 @@ export interface ImportRecord {
   storage?: ImportStorage;
   path?: string;
   handle?: FileSystemDirectoryHandle;
-  storageKind?: "direct" | "git";
+  storageKind?: "direct" | "git" | "github";
   gitRepoRoot?: string;
   pendingGitPaths?: string[];
+  pendingGitFileContents?: Record<string, string>;
+  githubOwner?: string;
+  githubRepo?: string;
+  githubBranch?: string;
+  githubWorkspacePath?: string;
 }
 
 export interface CacheRequestRecord {

@@ -14,7 +14,7 @@ This keeps save and commit behavior explicit and testable across runtimes.
 ## Interface contract
 
 `WorkspaceStorageOption` defines:
-- `kind: "direct" | "git"`
+- `kind: "direct" | "git" | "github"`
 - `supportsCommit: boolean`
 - `checkSave(input)` -> `{ ok: true } | { ok: false, reason }`
 - `save(input)`
@@ -38,13 +38,20 @@ This keeps save and commit behavior explicit and testable across runtimes.
   - save: invokes `write_text_file`
   - commit check: same metadata guards
   - commit: invokes `git_commit_paths`
+- `WebGitHubStorageOption`
+  - save check/save: unsupported (web edits are kept in cache and staged for backend commit)
+  - commit check: requires GitHub repo metadata + pending file contents
+  - commit: POST `/api/github/commit` with workspace metadata and pending file map
+  - surfaces `GITHUB_REAUTH_REQUIRED` when backend demands write scope escalation
 
 ## Import metadata
 
 `ImportRecord` now persists storage state:
-- `storageKind?: "direct" | "git"`
+- `storageKind?: "direct" | "git" | "github"`
 - `gitRepoRoot?: string`
 - `pendingGitPaths?: string[]`
+- `pendingGitFileContents?: Record<string, string>` (github mode)
+- `githubOwner?`, `githubRepo?`, `githubBranch?`, `githubWorkspacePath?` (github mode)
 
 Backfill behavior:
 - Existing Tauri imports without `storageKind` are detected once on tree load and persisted.
@@ -57,19 +64,27 @@ Backfill behavior:
 3. Runs `save`.
 4. If storage kind is `git`, appends written relative path to `pendingGitPaths` (deduped).
 
-`Save` remains a file-write operation and does not auto-commit.
+For github-backed imports (`storage: indexeddb`, `storageKind: "github"`):
+- saves do not enqueue filesystem sync ops
+- edited file content is tracked in `pendingGitFileContents`
+- tracked paths are tracked in `pendingGitPaths`
+- commit later pushes these tracked files through backend API
 
-## Git commit behavior (Tauri only)
+`Save` remains non-committing in all modes.
+
+## Commit behavior
 
 Workspace-level commit action calls `commitWorkspaceChanges(workspaceId, message?)`:
-1. Ensures workspace storage supports commit (`git` only).
+1. Ensures workspace storage supports commit (`git` or `github`).
 2. Flushes sync queue.
 3. Blocks commit if sync queue still has pending/error ops.
 4. Uses only `pendingGitPaths` tracked by eshttp.
 5. Uses default message when empty: `chore(eshttp): sync workspace changes`.
-6. Calls `git_commit_paths` and clears `pendingGitPaths` on success.
+6. For tauri git: converts workspace-relative paths to repo-relative and calls `git_commit_paths`.
+7. For web github: uses `pendingGitFileContents` and calls backend `/api/github/commit`.
+8. Clears pending path/content state on success.
 
-Web runtime never exposes or runs git commit flow.
+Web runtime can expose commit flow for github-backed imports.
 
 ## Tauri command contract
 
