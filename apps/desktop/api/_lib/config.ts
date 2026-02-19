@@ -105,7 +105,10 @@ export function getBackendConfig(): BackendConfig {
     githubClientId: required("GITHUB_CLIENT_ID"),
     githubClientSecret: required("GITHUB_CLIENT_SECRET"),
     githubRedirectUri: requiredGithubRedirectUri(appOrigin),
+<<<<<<< ours
     githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET?.trim() || null,
+=======
+>>>>>>> theirs
     sessionCookieName: process.env.SESSION_COOKIE_NAME?.trim() || DEFAULT_SESSION_COOKIE_NAME,
     sessionTtlSeconds: optionalInt("SESSION_TTL_SECONDS", DEFAULT_SESSION_TTL_SECONDS),
     oauthStateTtlSeconds: optionalInt("OAUTH_STATE_TTL_SECONDS", DEFAULT_STATE_TTL_SECONDS),

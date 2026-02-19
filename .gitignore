@@ -4,6 +4,7 @@ node_modules
 # output
 out
 dist
+apps/desktop/api-build
 *.tgz
 apps/desktop/src-tauri/gen
 apps/desktop/src-tauri/target

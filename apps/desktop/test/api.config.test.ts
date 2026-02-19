@@ -11,7 +11,10 @@ const REQUIRED_ENV: Record<string, string> = {
 const APP_ORIGIN_ENV_KEYS = [
   "APP_ORIGIN",
   "GITHUB_REDIRECT_URI",
+<<<<<<< ours
   "GITHUB_WEBHOOK_SECRET",
+=======
+>>>>>>> theirs
   "VERCEL_ENV",
   "VERCEL_URL",
   "VERCEL_BRANCH_URL",
@@ -88,6 +91,7 @@ describe("api config app origin", () => {
 
     expect(config.githubRedirectUri).toBe("https://manual.example.com/custom/callback");
   });
+<<<<<<< ours
 
   test("reads optional GITHUB_WEBHOOK_SECRET when provided", () => {
     process.env.APP_ORIGIN = "https://manual.example.com";
@@ -97,4 +101,6 @@ describe("api config app origin", () => {
 
     expect(config.githubWebhookSecret).toBe("webhook-secret");
   });
+=======
+>>>>>>> theirs
 });

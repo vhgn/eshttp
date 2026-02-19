@@ -20,6 +20,14 @@ Do not replace these with relative `cd .. && bun run ...` commands. The Tauri CL
 
 To keep browser/desktop builds independent from a prebuild step, `apps/desktop/vite.config.ts` maps `@eshttp/core` to `../../libs/core/src/index.ts` via `resolve.alias`. Keep this alias in place unless you also change build orchestration to always build `libs/core` first in every environment.
 
+## Desktop build script behavior
+
+`apps/desktop/package.json` `build` intentionally does two steps:
+- `bun run build:api`: compiles `apps/desktop/api/**/*.ts` to `apps/desktop/api-build/**/*.js` using `tsconfig.api.json`
+- `vite build`: produces frontend static assets in `dist`
+
+This keeps backend Vercel functions on emitted CommonJS JavaScript while the app/frontend remain on the existing Vite pipeline.
+
 ## Rust layout expectation
 
 `apps/desktop/src-tauri/Cargo.toml` declares a `[lib]` target named `eshttp_desktop_lib`. That requires `apps/desktop/src-tauri/src/lib.rs` to exist. Keep `src/main.rs` as a thin launcher:

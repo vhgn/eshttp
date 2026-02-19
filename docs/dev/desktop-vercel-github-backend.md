@@ -3,7 +3,9 @@
 Scope:
 - `apps/desktop/vercel.json`
 - `apps/desktop/.env.example`
+- `apps/desktop/tsconfig.api.json`
 - `apps/desktop/api/**`
+- `apps/desktop/api-build/**`
 - `apps/desktop/src/data/storageOptions.ts`
 - `apps/desktop/src/data/collectionsRepository.ts`
 
@@ -11,7 +13,8 @@ Scope:
 
 `apps/desktop/vercel.json` configures:
 - Vite static build output (`dist`)
-- Node.js Vercel Functions for `api/**/*.ts` (duration only; runtime version is read from `apps/desktop/package.json` `engines.node`)
+- Node.js Vercel Functions for `api-build/**/*.js` (duration only; runtime version is read from `apps/desktop/package.json` `engines.node`)
+- Build-time transpilation of backend TS (`apps/desktop/api/**/*.ts`) into CommonJS JS (`apps/desktop/api-build/**/*.js`) via `tsconfig.api.json`
 - Explicit routed API endpoints:
   - `/api/auth/github/start`
   - `/api/auth/github/callback`
@@ -31,7 +34,10 @@ Required vars in `apps/desktop/.env.example`:
 Optional:
 - `APP_ORIGIN` (inferred from `VERCEL_PROJECT_PRODUCTION_URL`/`VERCEL_BRANCH_URL`/`VERCEL_URL` when omitted)
 - `GITHUB_REDIRECT_URI` (defaults to `${APP_ORIGIN}/api/auth/github/callback`)
+<<<<<<< ours
 - `GITHUB_WEBHOOK_SECRET` (required only for `/api/github/webhook` GitHub App webhook signature verification)
+=======
+>>>>>>> theirs
 - `SESSION_COOKIE_NAME`
 - `SESSION_TTL_SECONDS`
 - `OAUTH_STATE_TTL_SECONDS`
@@ -100,3 +106,10 @@ Coverage added in `apps/desktop/test/`:
 - `api.config.test.ts`: `APP_ORIGIN` and `GITHUB_REDIRECT_URI` env inference/override behavior
 - `api.validation.test.ts`: redirect + commit payload hardening checks
 - `collectionsRepository.github.test.ts`: import/commit flow through backend stubs
+
+## Build contract
+
+- `apps/desktop/package.json` `build` runs backend compile first (`bun run build:api`) and then Vite static build.
+- `build:api` uses `tsc -p tsconfig.api.json`, targeting CommonJS output in `api-build/`.
+- `build:api` writes `api-build/package.json` with `{"type":"commonjs"}` so Node treats emitted `.js` as CommonJS at runtime.
+- This avoids requiring `.js` suffixes in TypeScript source imports under `apps/desktop/api`.

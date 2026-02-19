@@ -4,34 +4,34 @@
   "buildCommand": "bun run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/**/*.ts": {
+    "api-build/**/*.js": {
       "maxDuration": 30
     }
   },
   "routes": [
     {
       "src": "/api/auth/github/start",
-      "dest": "/api/auth/github/start.ts"
+      "dest": "/api-build/auth/github/start.js"
     },
     {
       "src": "/api/auth/github/callback",
-      "dest": "/api/auth/github/callback.ts"
+      "dest": "/api-build/auth/github/callback.js"
     },
     {
       "src": "/api/auth/github/session",
-      "dest": "/api/auth/github/session.ts"
+      "dest": "/api-build/auth/github/session.js"
     },
     {
       "src": "/api/github/workspaces",
-      "dest": "/api/github/workspaces.ts"
+      "dest": "/api-build/github/workspaces.js"
     },
     {
       "src": "/api/github/commit",
-      "dest": "/api/github/commit.ts"
+      "dest": "/api-build/github/commit.js"
     },
     {
       "src": "/api/github/webhook",
-      "dest": "/api/github/webhook.ts"
+      "dest": "/api-build/github/webhook.js"
     },
     {
       "handle": "filesystem"

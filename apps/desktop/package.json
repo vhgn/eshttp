@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "bun run build:api && vite build",
+    "build:api": "tsc -p tsconfig.api.json && mkdir -p api-build && echo '{\"type\":\"commonjs\"}' > api-build/package.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check src test api vite.config.ts",
     "format": "biome format --write src test api vite.config.ts",
