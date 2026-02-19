@@ -1,0 +1,123 @@
+name: Publish Desktop
+
+on:
+  release:
+    types:
+      - created
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to simulate (e.g. desktop-v1.2.3)
+        required: false
+        type: string
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      publish_desktop: ${{ steps.detect.outputs.publish_desktop }}
+      release_version: ${{ steps.detect.outputs.release_version }}
+      release_tag: ${{ steps.detect.outputs.release_tag }}
+    steps:
+      - name: Detect desktop release target from tag
+        id: detect
+        env:
+          TAG_NAME: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
+        run: |
+          tag="$TAG_NAME"
+          semver='[0-9]+\.[0-9]+\.[0-9]+([-][0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?'
+
+          if [[ "$tag" =~ ^desktop[-/]v?($semver)$ ]] || [[ "$tag" =~ ^eshttp-desktop@v?($semver)$ ]]; then
+            publish_desktop=true
+            version="${BASH_REMATCH[1]}"
+          else
+            publish_desktop=false
+            version=""
+            echo "Skipping desktop publish for unsupported tag '$tag'."
+          fi
+
+          echo "publish_desktop=$publish_desktop" >> "$GITHUB_OUTPUT"
+          echo "release_version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+
+  publish_desktop:
+    runs-on: ${{ matrix.runner }}
+    needs: detect
+    if: needs.detect.outputs.publish_desktop == 'true'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS DMG
+            runner: macos-latest
+            bundle_types: dmg
+            asset_glob: apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Set desktop versions from release tag
+        env:
+          RELEASE_VERSION: ${{ needs.detect.outputs.release_version }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const version = process.env.RELEASE_VERSION;
+          if (!version) {
+            throw new Error("Missing RELEASE_VERSION");
+          }
+
+          const desktopPkgPath = "apps/desktop/package.json";
+          const tauriConfigPath = "apps/desktop/src-tauri/tauri.conf.json";
+          const cargoTomlPath = "apps/desktop/src-tauri/Cargo.toml";
+
+          const desktopPkg = JSON.parse(fs.readFileSync(desktopPkgPath, "utf8"));
+          desktopPkg.version = version;
+          fs.writeFileSync(desktopPkgPath, `${JSON.stringify(desktopPkg, null, 2)}\n`);
+
+          const tauriConfig = JSON.parse(fs.readFileSync(tauriConfigPath, "utf8"));
+          tauriConfig.version = version;
+          fs.writeFileSync(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);
+
+          const cargoToml = fs.readFileSync(cargoTomlPath, "utf8");
+          const updatedCargoToml = cargoToml.replace(
+            /^version\s*=\s*"[^"]+"$/m,
+            `version = "${version}"`,
+          );
+          if (cargoToml === updatedCargoToml) {
+            throw new Error("Could not update version in Cargo.toml");
+          }
+          fs.writeFileSync(cargoTomlPath, updatedCargoToml);
+          NODE
+
+      - name: Build core package
+        run: bun run --filter '@eshttp/core' build
+
+      - name: Build desktop (${{ matrix.name }})
+        run: bun run --filter '@eshttp/desktop' tauri:build -- --bundles ${{ matrix.bundle_types }}
+
+      - name: Upload DMG to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.detect.outputs.release_tag }}
+          ASSET_GLOB: ${{ matrix.asset_glob }}
+        run: |
+          shopt -s nullglob
+          assets=($ASSET_GLOB)
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No DMG files found with glob '$ASSET_GLOB'."
+            exit 1
+          fi
+
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
