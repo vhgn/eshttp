@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { ImportRecord } from "../src/data/idb";
 import { resolveStorageOption } from "../src/data/storageOptions";
 
@@ -118,5 +118,30 @@ describe("storage options", () => {
     if (!check.ok) {
       expect(check.reason).toContain("Git repository root is missing");
     }
+  });
+
+  test("tauri direct save uses scoped write command with relative path", async () => {
+    const invoke = mock(async (_command: string, _args?: Record<string, unknown>) => {
+      return undefined;
+    }) as unknown as <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
+    const importRecord = makeImport({
+      runtime: "tauri",
+      path: "/tmp/project",
+      storageKind: "direct",
+    });
+    const option = resolveStorageOption(importRecord, { invoke });
+
+    await option.save({
+      importRecord,
+      relativePath: "users/list.http",
+      content: "GET https://example.com",
+    });
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("write_scoped_text_file", {
+      root: "/tmp/project",
+      relativePath: "users/list.http",
+      contents: "GET https://example.com",
+    });
   });
 });

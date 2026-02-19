@@ -31,11 +31,11 @@ This keeps save and commit behavior explicit and testable across runtimes.
   - commit: unsupported
 - `TauriDirectStorageOption`
   - save check: imported path exists in metadata
-  - save: invokes `write_text_file`
+  - save: invokes `write_scoped_text_file(root, relativePath, contents)`
   - commit: unsupported
 - `TauriGitStorageOption`
   - save check: imported path + git repo root metadata present
-  - save: invokes `write_text_file`
+  - save: invokes `write_scoped_text_file(root, relativePath, contents)`
   - commit check: same metadata guards
   - commit: invokes `git_commit_paths`
 
@@ -78,6 +78,19 @@ Web runtime never exposes or runs git commit flow.
   - returns `null` when path is not in a repo
 - `git_commit_paths(repo_root, paths, message)`:
   - sanitizes/dedupes relative paths
-  - `git add -- <paths...>`
+  - converts each path to a literal pathspec (`:(literal)<path>`)
+  - `git add -- <literal-paths...>`
   - no-op success when staged diff for those paths is empty
-  - `git commit -m <message> -- <paths...>`
+  - `git commit -m <message> --no-verify -- <literal-paths...>` (hooks disabled)
+
+## Scoped file safety checks
+
+Tauri file writes and reads now use scoped commands:
+- `read_scoped_text_file(root, relativePath)`
+- `write_scoped_text_file(root, relativePath, contents)`
+
+Backend guarantees for scoped commands:
+- rejects empty/absolute/parent (`..`) relative paths
+- resolves symlinks and rejects paths that escape `root`
+- rejects writes through symlinked parent directories
+- rejects non-file read/write targets

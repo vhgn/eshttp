@@ -93,8 +93,8 @@ Save behavior is unchanged by git storage:
 2. `save(...)`
 
 Strategy behavior:
-- `tauri + direct`: `write_text_file`
-- `tauri + git`: `write_text_file` and track changed path in `pendingGitPaths`
+- `tauri + direct`: `write_scoped_text_file(root, relativePath, contents)`
+- `tauri + git`: `write_scoped_text_file(root, relativePath, contents)` and track changed path in `pendingGitPaths`
 - `web + direct`: File System Access permission check + write through handles
 
 ## Commit flow (Tauri git only)
@@ -125,10 +125,15 @@ Tauri commands used by repository:
 - `pick_directory`
 - `discover_collections`
 - `list_requests`
-- `read_text_file`
-- `write_text_file`
+- `read_scoped_text_file`
+- `write_scoped_text_file`
 - `detect_git_repo`
 - `git_commit_paths`
 - `read_environment_file`
+
+Scoped read/write commands perform backend path safety checks:
+- only relative paths are accepted (`..` and absolute segments are rejected)
+- symlink escapes outside root are rejected
+- write targets must resolve under root
 
 In web runtime, analogous behavior is implemented directly in browser APIs (`showDirectoryPicker`, directory handles, file handles).

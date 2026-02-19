@@ -5,7 +5,7 @@ interface TestState {
   cacheByImportId: Record<string, unknown>;
   syncQueue: Array<Record<string, unknown>>;
   detectedGitRepo: string | null;
-  writeCalls: Array<{ path: string; contents: string }>;
+  writeCalls: Array<{ root: string; relativePath: string; contents: string }>;
   commitCalls: Array<{ repoRoot: string; paths: string[]; message: string }>;
   failCommit: boolean;
 }
@@ -45,7 +45,7 @@ function installModuleMocks(): void {
           return [];
         }
 
-        if (command === "read_text_file") {
+        if (command === "read_scoped_text_file") {
           return null;
         }
 
@@ -57,10 +57,11 @@ function installModuleMocks(): void {
           return null;
         }
 
-        if (command === "write_text_file") {
-          const path = String(args?.path ?? "");
+        if (command === "write_scoped_text_file") {
+          const root = String(args?.root ?? "");
+          const relativePath = String(args?.relativePath ?? "");
           const contents = String(args?.contents ?? "");
-          state.writeCalls.push({ path, contents });
+          state.writeCalls.push({ root, relativePath, contents });
           return undefined;
         }
 
@@ -178,7 +179,11 @@ describe("CollectionsRepository git storage behavior", () => {
 
     expect(state.syncQueue).toHaveLength(0);
     expect(state.writeCalls).toHaveLength(1);
-    expect(state.writeCalls[0]?.path).toBe("/repo/workspace/users/list.http");
+    expect(state.writeCalls[0]).toEqual({
+      root: "/repo/workspace",
+      relativePath: "users/list.http",
+      contents: "GET https://example.com/users",
+    });
     expect(state.imports[0]?.pendingGitPaths).toEqual(["users/list.http"]);
   });
 

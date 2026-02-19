@@ -422,13 +422,17 @@ export class CollectionsRepository {
     }
 
     if (index.runtime === "tauri") {
-      if (!index.absolutePath) {
-        throw new Error("Readonly request path is missing");
+      const importRecord = await this.getImport(index.importId);
+      if (!importRecord?.path) {
+        throw new Error("Readonly workspace path is missing");
       }
 
-      const value = await this.readDesktopOptionalText(index.absolutePath);
+      const value = await this.readDesktopOptionalText(
+        importRecord.path,
+        index.requestRelativePath,
+      );
       if (value == null) {
-        throw new Error(`Failed to read request file: ${index.absolutePath}`);
+        throw new Error(`Failed to read request file: ${index.requestRelativePath}`);
       }
 
       return value;
@@ -863,8 +867,9 @@ export class CollectionsRepository {
         } satisfies RequestFile;
       });
 
-      const iconPath = joinFsPath(discoveredCollection.uri, "icon.svg");
-      const iconSvg = await this.readDesktopOptionalText(iconPath);
+      const iconRelativePath =
+        relativePathValue === "." ? "icon.svg" : `${relativePathValue}/icon.svg`;
+      const iconSvg = await this.readDesktopOptionalText(importRecord.path, iconRelativePath);
 
       collections.push({
         relativePath: relativePathValue,
@@ -1151,7 +1156,9 @@ export class CollectionsRepository {
       const cachedRequests: CacheRequestRecord[] = [];
       for (const request of requests) {
         const fileName = basename(request.uri);
-        const text = (await this.readDesktopOptionalText(request.uri)) ?? "";
+        const requestRelativePath = getRequestRelativePath(relativePathValue, fileName);
+        const text =
+          (await this.readDesktopOptionalText(importRecord.path, requestRelativePath)) ?? "";
         cachedRequests.push({
           fileName,
           title: request.title,
@@ -1159,7 +1166,9 @@ export class CollectionsRepository {
         });
       }
 
-      const iconSvg = await this.readDesktopOptionalText(joinFsPath(collection.uri, "icon.svg"));
+      const iconRelativePath =
+        relativePathValue === "." ? "icon.svg" : `${relativePathValue}/icon.svg`;
+      const iconSvg = await this.readDesktopOptionalText(importRecord.path, iconRelativePath);
 
       cachedCollections.push({
         relativePath: relativePathValue,
@@ -1406,8 +1415,11 @@ export class CollectionsRepository {
     };
   }
 
-  private async readDesktopOptionalText(path: string): Promise<string | null> {
-    return invokeTauri<string | null>("read_text_file", { path });
+  private async readDesktopOptionalText(
+    root: string,
+    relativePath: string,
+  ): Promise<string | null> {
+    return invokeTauri<string | null>("read_scoped_text_file", { root, relativePath });
   }
 
   private async getImport(importId: string): Promise<ImportRecord | null> {
