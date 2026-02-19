@@ -94,6 +94,10 @@ const ACCENTS_BY_THEME: Record<
 
 let monacoThemesRegistered = false;
 
+function cn(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
 function registerMonacoThemes(monaco: Monaco) {
   registerInlineLanguage(monaco);
   if (monacoThemesRegistered) {
@@ -883,6 +887,31 @@ export function App() {
   }
 
   const monacoTheme = MONACO_THEME_BY_APP_THEME[themeName];
+  const mutedTextClass = "m-0 mt-[0.2rem] text-[0.86rem] text-content-muted";
+  const panelShellClass =
+    "overflow-hidden rounded-panel border border-stroke-default bg-[linear-gradient(180deg,var(--surface-primary),var(--surface-secondary))]";
+  const sidebarPanelClass =
+    "mb-[0.9rem] rounded-panel border border-stroke-default bg-[linear-gradient(170deg,var(--surface-secondary),var(--surface-tertiary))] p-[0.72rem]";
+  const controlGridClass = "mb-[0.9rem] grid gap-[0.35rem] text-[0.9rem]";
+  const subtleButtonClass =
+    "w-full rounded-control border border-[color-mix(in_srgb,var(--stroke-accent)_50%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_18%,var(--surface-tertiary))] px-[0.55rem] py-[0.45rem] text-content-primary disabled:cursor-not-allowed disabled:opacity-60";
+  const controlSurfaceClass =
+    "rounded-control border border-stroke-default bg-surface-secondary px-[0.55rem] py-[0.45rem] text-content-primary disabled:cursor-not-allowed disabled:opacity-60";
+  const tabButtonClass =
+    "rounded-control border border-stroke-default bg-transparent px-[0.62rem] py-[0.38rem] text-content-primary";
+  const tabButtonActiveClass =
+    "bg-surface-tertiary border-[color-mix(in_srgb,var(--stroke-accent)_40%,var(--stroke-default))]";
+  const kvGridClass =
+    "grid grid-cols-[1fr_1fr_74px_96px] items-center gap-[0.5rem] p-[0.72rem] max-[1080px]:grid-cols-1";
+  const kvHeadClass = "text-[0.82rem] text-content-muted";
+  const rowActionClass =
+    "rounded-control border border-stroke-default bg-[color-mix(in_srgb,var(--state-danger)_40%,var(--surface-secondary))] px-[0.55rem] py-[0.45rem] text-content-primary";
+  const addRowClass = cn(controlSurfaceClass, "col-span-2 max-[1080px]:col-span-1");
+  const collectionControlButtonClass =
+    "rounded-[6px] border border-stroke-default bg-surface-secondary px-[0.4rem] py-[0.2rem] text-[0.72rem] text-content-muted";
+  const iconOptionClass =
+    "grid place-items-center rounded-[6px] border border-stroke-default bg-surface-tertiary py-[0.3rem] text-content-primary";
+  const editorBoxClass = "overflow-hidden rounded-[10px] border border-stroke-default";
 
   function pushToast(text: string, tone: ToastMessage["tone"] = "error") {
     const id = crypto.randomUUID();
@@ -899,20 +928,20 @@ export function App() {
     );
 
     return (
-      <div key={`branch:${branch.key}`} className="collection-branch">
+      <div key={`branch:${branch.key}`} className="grid gap-[0.36rem]">
         {node ? (
-          <div className="collection-card">
-            <div className="collection-head">
-              <h3>
+          <div className="rounded-tile border border-[color-mix(in_srgb,var(--stroke-default)_90%,transparent)] bg-[color-mix(in_srgb,var(--surface-secondary)_86%,transparent)] p-[0.45rem]">
+            <div className="mb-[0.35rem] flex items-center justify-between gap-[0.4rem]">
+              <h3 className="m-0 flex items-center gap-[0.4rem] text-[0.84rem] text-content-muted">
                 {node.iconSvg ? (
                   <img
-                    className="collection-icon"
+                    className="inline-block h-[14px] w-[14px]"
                     src={svgToDataUri(node.iconSvg)}
                     alt=""
                     aria-hidden
                   />
                 ) : (
-                  <span className="collection-icon-fallback" aria-hidden>
+                  <span className="text-[0.78rem] text-stroke-accent" aria-hidden>
                     ◇
                   </span>
                 )}
@@ -920,7 +949,7 @@ export function App() {
               </h3>
               <button
                 type="button"
-                className="collection-icon-action"
+                className={collectionControlButtonClass}
                 onClick={() =>
                   setActiveCollectionIconEditor((current) =>
                     current === node.collection.id ? null : node.collection.id,
@@ -931,8 +960,8 @@ export function App() {
               </button>
             </div>
             {activeCollectionIconEditor === node.collection.id ? (
-              <div className="icon-picker">
-                <div className="icon-grid">
+              <div className="mb-[0.45rem] mt-[0.15rem] rounded-control border border-stroke-default bg-surface-secondary p-[0.45rem]">
+                <div className="mb-[0.4rem] grid grid-cols-8 gap-[0.22rem]">
                   {COLLECTION_ICON_OPTIONS.map((entry) => {
                     const Icon = entry.icon;
                     const isSelected = selectedIconId === entry.id;
@@ -941,7 +970,11 @@ export function App() {
                         key={entry.id}
                         type="button"
                         title={entry.label}
-                        className={isSelected ? "icon-option selected" : "icon-option"}
+                        className={cn(
+                          iconOptionClass,
+                          isSelected &&
+                            "border-[color-mix(in_srgb,var(--stroke-accent)_55%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_18%,var(--surface-tertiary))]",
+                        )}
                         onClick={() => setSelectedIconId(entry.id)}
                       >
                         <Icon size={18} weight="duotone" />
@@ -949,17 +982,17 @@ export function App() {
                     );
                   })}
                 </div>
-                <div className="color-grid">
+                <div className="mb-[0.4rem] grid grid-cols-5 gap-[0.26rem]">
                   {accentPalette.map((entry) => (
                     <button
                       key={entry.token}
                       type="button"
                       title={entry.label}
-                      className={
-                        selectedAccentToken === entry.token
-                          ? "accent-option selected"
-                          : "accent-option"
-                      }
+                      className={cn(
+                        "h-[20px] w-full rounded-pill border border-stroke-default",
+                        selectedAccentToken === entry.token &&
+                          "shadow-[0_0_0_2px_color-mix(in_srgb,var(--stroke-accent)_45%,transparent)]",
+                      )}
                       style={{ backgroundColor: entry.value }}
                       onClick={() => setSelectedAccentToken(entry.token)}
                     />
@@ -967,21 +1000,27 @@ export function App() {
                 </div>
                 <button
                   type="button"
-                  className="apply-icon"
+                  className="w-full rounded-[7px] border border-[color-mix(in_srgb,var(--stroke-accent)_50%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_15%,var(--surface-tertiary))] px-[0.4rem] py-[0.34rem] text-[0.76rem] text-content-primary"
                   onClick={() => void onApplyCollectionIcon(node.collection)}
                 >
                   Apply Icon
                 </button>
               </div>
             ) : null}
-            {node.requests.length === 0 ? <p className="tree-empty">No requests yet.</p> : null}
+            {node.requests.length === 0 ? (
+              <p className="my-[0.28rem] text-[0.82rem] text-content-muted">No requests yet.</p>
+            ) : null}
             {node.requests.map((request) => {
               const isSelected = selection?.request.id === request.id;
               return (
                 <button
                   type="button"
                   key={request.id}
-                  className={isSelected ? "request-button selected" : "request-button"}
+                  className={cn(
+                    "mb-[0.35rem] w-full rounded-control border border-stroke-default bg-transparent px-[0.58rem] py-[0.46rem] text-left text-content-primary hover:bg-surface-tertiary",
+                    isSelected &&
+                      "border-[color-mix(in_srgb,var(--stroke-accent)_45%,var(--stroke-default))] bg-surface-active",
+                  )}
                   onClick={() =>
                     void onSelectRequest({
                       workspace,
@@ -996,16 +1035,18 @@ export function App() {
             })}
           </div>
         ) : (
-          <p className="tree-branch-label">{branch.label}</p>
+          <p className="m-0 text-[0.78rem] uppercase tracking-[0.04em] text-content-muted">
+            {branch.label}
+          </p>
         )}
 
         {branch.children.length > 0 ? (
           <div
-            className={
-              hasSelectedRequest
-                ? "tree-branch-children tree-branch-children-selected"
-                : "tree-branch-children"
-            }
+            className={cn(
+              "ml-[0.55rem] grid gap-[0.36rem] border-l border-[color-mix(in_srgb,var(--stroke-default)_78%,transparent)] pl-[0.55rem]",
+              hasSelectedRequest &&
+                "border-l-[color-mix(in_srgb,var(--stroke-accent)_45%,var(--stroke-default))]",
+            )}
           >
             {branch.children.map((child) => renderCollectionBranch(child, workspace))}
           </div>
@@ -1015,76 +1056,122 @@ export function App() {
   }
 
   return (
-    <div className="app-shell" data-theme={themeName}>
-      <div className="toast-stack" aria-live="polite" aria-atomic="true">
+    <div
+      className="app-shell grid min-h-screen grid-cols-[78px_316px_1fr] bg-canvas max-[1080px]:grid-cols-1 max-[1080px]:grid-rows-[auto_auto_1fr]"
+      data-theme={themeName}
+    >
+      <div
+        className="pointer-events-none fixed right-[0.9rem] top-[0.9rem] z-30 grid gap-[0.45rem]"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {toasts.map((toast) => (
-          <div key={toast.id} className={toast.tone === "error" ? "toast toast-error" : "toast"}>
+          <div
+            key={toast.id}
+            className={cn(
+              "max-w-[min(80vw,420px)] rounded-tile border border-[color-mix(in_srgb,var(--stroke-default)_70%,transparent)] bg-[color-mix(in_srgb,var(--surface-secondary)_90%,#000)] px-[0.7rem] py-[0.55rem] text-[0.85rem] text-content-primary shadow-toast",
+              toast.tone === "error" &&
+                "border-[color-mix(in_srgb,var(--status-error)_55%,var(--stroke-default))] bg-[color-mix(in_srgb,#6b2828_24%,var(--surface-secondary))]",
+            )}
+          >
             {toast.text}
           </div>
         ))}
       </div>
 
-      <aside className="workspace-rail">
+      <aside className="flex flex-col items-center gap-[0.7rem] border-r border-stroke-default bg-[linear-gradient(190deg,var(--surface-primary),color-mix(in_srgb,var(--surface-secondary)_84%,#000))] px-[0.5rem] py-[0.72rem] max-[1080px]:flex-row max-[1080px]:justify-start max-[1080px]:overflow-x-auto max-[1080px]:border-b max-[1080px]:border-r-0 max-[1080px]:px-[0.52rem] max-[1080px]:py-[0.58rem]">
         <button
           type="button"
-          className="workspace-create"
+          className="h-[42px] w-[42px] rounded-panel border border-[color-mix(in_srgb,var(--stroke-accent)_52%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_24%,var(--surface-tertiary))] text-[1.35rem] leading-none text-content-primary"
           title="Create workspace"
           aria-label="Create workspace"
           onClick={() => void onCreateWorkspace()}
         >
           +
         </button>
-        <div className="workspace-list">
+        <div className="grid w-full justify-items-center gap-[0.5rem] overflow-auto pb-[0.3rem] max-[1080px]:flex max-[1080px]:w-auto max-[1080px]:gap-[0.44rem] max-[1080px]:overflow-visible max-[1080px]:pb-0">
           {workspaceTree.map((tree) => {
             const isActive = activeWorkspaceNode?.workspace.id === tree.workspace.id;
             return (
               <button
                 type="button"
                 key={tree.workspace.id}
-                className={isActive ? "workspace-pill active" : "workspace-pill"}
+                className={cn(
+                  "relative grid h-[42px] w-[42px] place-items-center rounded-[13px] border border-stroke-default bg-surface-secondary text-content-muted",
+                  isActive &&
+                    "border-[color-mix(in_srgb,var(--stroke-accent)_58%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_20%,var(--surface-secondary))] text-content-primary",
+                )}
                 title={tree.workspace.name}
                 onClick={() => setActiveWorkspaceId(tree.workspace.id)}
               >
-                <span className="workspace-pill-name">
+                <span className="text-[0.64rem] font-bold tracking-[0.04em]">
                   {tree.workspace.name.slice(0, 2).toUpperCase()}
                 </span>
-                <span className={`workspace-pill-sync ${tree.syncState}`} />
+                <span
+                  className={cn(
+                    "absolute bottom-[-3px] right-[-3px] h-[9px] w-[9px] rounded-pill border border-[color-mix(in_srgb,var(--stroke-default)_80%,transparent)] bg-[color-mix(in_srgb,var(--content-muted)_45%,transparent)]",
+                    tree.syncState === "synced" &&
+                      "bg-[color-mix(in_srgb,var(--status-success)_70%,var(--surface-tertiary))]",
+                    tree.syncState === "pending" &&
+                      "bg-[color-mix(in_srgb,var(--status-warning)_65%,var(--surface-tertiary))]",
+                    tree.syncState === "error" &&
+                      "bg-[color-mix(in_srgb,var(--status-error)_68%,var(--surface-tertiary))]",
+                  )}
+                />
               </button>
             );
           })}
         </div>
       </aside>
 
-      <aside className="sidebar">
-        <div className="sidebar-head">
-          <div className="app-brand">
-            <img src={appIcon} alt="" aria-hidden className="app-brand-icon" />
-            <h1>eshttp</h1>
+      <aside className="overflow-auto border-r border-stroke-default bg-[linear-gradient(170deg,var(--surface-primary),var(--surface-secondary))] px-[0.9rem] py-[1rem] max-[1080px]:max-h-[42vh] max-[1080px]:border-b max-[1080px]:border-r-0">
+        <div className="mb-[1rem]">
+          <div className="inline-flex items-center gap-[0.45rem]">
+            <img src={appIcon} alt="" aria-hidden className="block h-[18px] w-[18px]" />
+            <h1 className="m-0 text-[1.15rem] tracking-[0.02em]">eshttp</h1>
           </div>
-          <p className="muted">Desktop HTTP Client</p>
-          <button type="button" className="import-button" onClick={() => void onCreateWorkspace()}>
+          <p className={mutedTextClass}>Desktop HTTP Client</p>
+          <button
+            type="button"
+            className={cn(subtleButtonClass, "mt-[0.7rem]")}
+            onClick={() => void onCreateWorkspace()}
+          >
             Create Workspace
           </button>
 
           {activeWorkspaceNode ? (
             <>
-              <div className="workspace-head">
-                <h2>{activeWorkspaceNode.workspace.name}</h2>
-                <div className="workspace-tags">
-                  <span className={`tag ${activeWorkspaceNode.mode}`}>
+              <div className="mt-[0.66rem] flex items-baseline justify-between gap-[0.4rem]">
+                <h2 className="m-0 text-[0.95rem]">{activeWorkspaceNode.workspace.name}</h2>
+                <div className="inline-flex gap-[0.3rem]">
+                  <span
+                    className={cn(
+                      "rounded-pill border border-stroke-default px-[0.44rem] py-[0.1rem] text-[0.7rem] uppercase tracking-[0.04em]",
+                      activeWorkspaceNode.mode === "readonly" && "text-content-muted",
+                      activeWorkspaceNode.mode === "editable" && "text-stroke-accent",
+                    )}
+                  >
                     {activeWorkspaceNode.mode}
                   </span>
-                  <span className={`tag ${activeWorkspaceNode.syncState}`}>
+                  <span
+                    className={cn(
+                      "rounded-pill border border-stroke-default px-[0.44rem] py-[0.1rem] text-[0.7rem] uppercase tracking-[0.04em]",
+                      activeWorkspaceNode.syncState === "pending" &&
+                        "text-[color-mix(in_srgb,var(--stroke-accent)_60%,var(--content-primary))]",
+                      activeWorkspaceNode.syncState === "error" && "text-status-error",
+                    )}
+                  >
                     {activeWorkspaceNode.syncState}
                   </span>
                 </div>
               </div>
               {activeWorkspaceNode.supportsCommit ? (
-                <div className="git-commit-panel">
-                  <p className="git-commit-meta">
+                <div className="mt-[0.68rem] grid gap-[0.48rem]">
+                  <p className="m-0 text-[0.78rem] text-content-muted">
                     Git storage · {activeWorkspaceNode.pendingGitChanges} pending
                   </p>
                   <InlineMonacoInput
+                    className="[--inline-input-bg:var(--surface-tertiary)]"
                     value={commitMessage}
                     onChange={setCommitMessage}
                     placeholder="Commit message (optional)"
@@ -1094,7 +1181,7 @@ export function App() {
                   />
                   <button
                     type="button"
-                    className="git-commit-button"
+                    className="w-full rounded-control border border-[color-mix(in_srgb,var(--stroke-accent)_50%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_14%,var(--surface-tertiary))] px-[0.54rem] py-[0.42rem] text-content-primary"
                     onClick={() => void onCommitWorkspaceChanges()}
                   >
                     Commit Changes
@@ -1103,14 +1190,15 @@ export function App() {
               ) : null}
             </>
           ) : (
-            <p className="muted">No workspaces yet.</p>
+            <p className={mutedTextClass}>No workspaces yet.</p>
           )}
         </div>
 
-        <section className="collection-create-panel">
-          <h2>Create Collection</h2>
-          <div className="collection-create">
+        <section className={sidebarPanelClass}>
+          <h2 className="mb-[0.56rem] mt-0 text-[0.9rem]">Create Collection</h2>
+          <div className="grid gap-[0.5rem]">
             <input
+              className="rounded-control border border-stroke-default bg-surface-tertiary px-[0.58rem] py-[0.45rem] text-content-primary disabled:cursor-not-allowed disabled:opacity-60"
               value={newCollectionPath}
               onChange={(event) => setNewCollectionPath(event.target.value)}
               placeholder="api/users"
@@ -1119,7 +1207,7 @@ export function App() {
             />
             <button
               type="button"
-              className="import-button"
+              className={cn(subtleButtonClass, "mt-0")}
               onClick={() => void onCreateCollection()}
               disabled={!activeWorkspaceNode}
             >
@@ -1128,11 +1216,12 @@ export function App() {
           </div>
         </section>
 
-        <section className="settings-panel">
-          <h2>Settings</h2>
-          <div className="control">
-            <p className="control-label">Environment</p>
+        <section className={sidebarPanelClass}>
+          <h2 className="mb-[0.7rem] mt-0 text-[0.9rem]">Settings</h2>
+          <div className={controlGridClass}>
+            <p className="m-0">Environment</p>
             <InlineMonacoInput
+              className="[--inline-input-bg:var(--surface-tertiary)]"
               value={envName}
               onChange={setEnvName}
               placeholder="default"
@@ -1141,9 +1230,10 @@ export function App() {
               ariaLabel="Environment"
             />
           </div>
-          <label className="control">
+          <label className={cn(controlGridClass, "mb-[0.6rem]")}>
             Theme
             <select
+              className="rounded-control border border-stroke-default bg-surface-tertiary px-[0.58rem] py-[0.42rem] text-content-primary"
               value={themeName}
               onChange={(event) => {
                 setThemeName(event.target.value as ThemeName);
@@ -1156,8 +1246,9 @@ export function App() {
               <option value="gruvbox">Gruvbox</option>
             </select>
           </label>
-          <label className="setting-toggle">
+          <label className="inline-flex items-center gap-[0.45rem] text-[0.85rem] text-content-muted">
             <input
+              className="m-0 h-[16px] w-[16px] accent-stroke-accent"
               type="checkbox"
               checked={syncParamsWithUrl}
               onChange={(event) => onSyncParamsWithUrlChange(event.target.checked)}
@@ -1166,24 +1257,27 @@ export function App() {
           </label>
         </section>
 
-        <div className="tree">
+        <div className="grid gap-[0.42rem]">
           {activeWorkspaceNode ? (
             collectionTree.length > 0 ? (
               collectionTree.map((branch) =>
                 renderCollectionBranch(branch, activeWorkspaceNode.workspace),
               )
             ) : (
-              <p className="tree-empty">No collections yet.</p>
+              <p className="my-[0.28rem] text-[0.82rem] text-content-muted">No collections yet.</p>
             )
           ) : (
-            <p className="tree-empty">Create a workspace to start.</p>
+            <p className="my-[0.28rem] text-[0.82rem] text-content-muted">
+              Create a workspace to start.
+            </p>
           )}
         </div>
       </aside>
 
-      <main className="content">
-        <header className="request-bar">
+      <main className="grid min-h-screen grid-rows-[auto_1fr_1fr] gap-[0.78rem] p-[0.9rem] max-[1080px]:grid-rows-[auto_auto_auto]">
+        <header className="grid grid-cols-[112px_1fr_94px_94px] items-center gap-[0.6rem] max-[1080px]:grid-cols-2">
           <select
+            className={controlSurfaceClass}
             value={method}
             onChange={(event) => setMethod(event.target.value as (typeof HTTP_METHODS)[number])}
           >
@@ -1195,7 +1289,7 @@ export function App() {
           </select>
 
           <InlineMonacoInput
-            className="url-input"
+            className="font-mono max-[1080px]:col-span-2"
             value={displayedUrl}
             onChange={onUrlInputChange}
             placeholder="https://api.example.com/v1/resource"
@@ -1204,40 +1298,48 @@ export function App() {
             ariaLabel="Request URL"
           />
 
-          <button type="button" className="send" onClick={() => void onRunRequest()}>
+          <button
+            type="button"
+            className="rounded-control border border-[color-mix(in_srgb,var(--stroke-accent)_55%,var(--stroke-default))] bg-stroke-accent px-[0.55rem] py-[0.45rem] font-semibold text-content-on-accent"
+            onClick={() => void onRunRequest()}
+          >
             Send
           </button>
-          <button type="button" className="save" onClick={() => void onSaveRequest()}>
+          <button
+            type="button"
+            className="rounded-control border border-[color-mix(in_srgb,var(--stroke-accent)_40%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_18%,var(--surface-secondary))] px-[0.55rem] py-[0.45rem] font-semibold text-content-primary"
+            onClick={() => void onSaveRequest()}
+          >
             Save
           </button>
         </header>
 
-        <section className="request-panel">
-          <nav className="tabs">
+        <section className={panelShellClass}>
+          <nav className="flex gap-[0.45rem] border-b border-stroke-default p-[0.7rem]">
             <button
               type="button"
-              className={panelTab === "params" ? "active" : undefined}
+              className={cn(tabButtonClass, panelTab === "params" && tabButtonActiveClass)}
               onClick={() => setPanelTab("params")}
             >
               Params
             </button>
             <button
               type="button"
-              className={panelTab === "headers" ? "active" : undefined}
+              className={cn(tabButtonClass, panelTab === "headers" && tabButtonActiveClass)}
               onClick={() => setPanelTab("headers")}
             >
               Headers
             </button>
             <button
               type="button"
-              className={panelTab === "auth" ? "active" : undefined}
+              className={cn(tabButtonClass, panelTab === "auth" && tabButtonActiveClass)}
               onClick={() => setPanelTab("auth")}
             >
               Auth
             </button>
             <button
               type="button"
-              className={panelTab === "body" ? "active" : undefined}
+              className={cn(tabButtonClass, panelTab === "body" && tabButtonActiveClass)}
               onClick={() => setPanelTab("body")}
             >
               Body
@@ -1245,14 +1347,14 @@ export function App() {
           </nav>
 
           {panelTab === "params" ? (
-            <div className="kv-grid">
-              <div className="kv-head">Key</div>
-              <div className="kv-head">Value</div>
-              <div className="kv-head">Enabled</div>
+            <div className={kvGridClass}>
+              <div className={kvHeadClass}>Key</div>
+              <div className={kvHeadClass}>Value</div>
+              <div className={kvHeadClass}>Enabled</div>
               <div />
 
               {queryRows.map((row) => (
-                <div className="kv-row" key={row.id}>
+                <div className="contents" key={row.id}>
                   <InlineMonacoInput
                     value={row.key}
                     onChange={(nextValue) =>
@@ -1284,6 +1386,7 @@ export function App() {
                     ariaLabel="Query parameter value"
                   />
                   <input
+                    className="mx-auto h-[18px] w-[18px] accent-stroke-accent"
                     type="checkbox"
                     checked={row.enabled}
                     onChange={(event) =>
@@ -1297,7 +1400,7 @@ export function App() {
                   />
                   <button
                     type="button"
-                    className="row-action"
+                    className={rowActionClass}
                     onClick={() =>
                       setQueryRows((current) => current.filter((entry) => entry.id !== row.id))
                     }
@@ -1309,7 +1412,7 @@ export function App() {
 
               <button
                 type="button"
-                className="add-row"
+                className={addRowClass}
                 onClick={() => setQueryRows((current) => [...current, createRow()])}
               >
                 Add Param
@@ -1318,14 +1421,14 @@ export function App() {
           ) : null}
 
           {panelTab === "headers" ? (
-            <div className="kv-grid">
-              <div className="kv-head">Key</div>
-              <div className="kv-head">Value</div>
-              <div className="kv-head">Enabled</div>
+            <div className={kvGridClass}>
+              <div className={kvHeadClass}>Key</div>
+              <div className={kvHeadClass}>Value</div>
+              <div className={kvHeadClass}>Enabled</div>
               <div />
 
               {headerRows.map((row) => (
-                <div className="kv-row" key={row.id}>
+                <div className="contents" key={row.id}>
                   <InlineMonacoInput
                     value={row.key}
                     onChange={(nextValue) =>
@@ -1357,6 +1460,7 @@ export function App() {
                     ariaLabel="Header value"
                   />
                   <input
+                    className="mx-auto h-[18px] w-[18px] accent-stroke-accent"
                     type="checkbox"
                     checked={row.enabled}
                     onChange={(event) =>
@@ -1370,7 +1474,7 @@ export function App() {
                   />
                   <button
                     type="button"
-                    className="row-action"
+                    className={rowActionClass}
                     onClick={() =>
                       setHeaderRows((current) => current.filter((entry) => entry.id !== row.id))
                     }
@@ -1382,7 +1486,7 @@ export function App() {
 
               <button
                 type="button"
-                className="add-row"
+                className={addRowClass}
                 onClick={() => setHeaderRows((current) => [...current, createRow()])}
               >
                 Add Header
@@ -1391,10 +1495,11 @@ export function App() {
           ) : null}
 
           {panelTab === "auth" ? (
-            <div className="auth-panel">
-              <div className="control">
-                <p className="control-label">Bearer Token</p>
+            <div className="p-[0.72rem]">
+              <div className={controlGridClass}>
+                <p className="m-0">Bearer Token</p>
                 <InlineMonacoInput
+                  className="[--inline-input-bg:var(--surface-tertiary)]"
                   value={bearerToken}
                   onChange={setBearerToken}
                   placeholder="Paste JWT or access token"
@@ -1407,18 +1512,20 @@ export function App() {
           ) : null}
 
           {panelTab === "body" ? (
-            <div className="body-panel">
-              <div className="body-controls">
-                <label>
+            <div className="p-[0.72rem]">
+              <div className="mb-[0.66rem] flex items-center gap-[0.85rem]">
+                <label className="inline-flex items-center gap-[0.35rem] text-content-muted">
                   <input
+                    className="accent-stroke-accent"
                     type="radio"
                     checked={bodyMode === "editor"}
                     onChange={() => setBodyMode("editor")}
                   />
                   Monaco Editor
                 </label>
-                <label>
+                <label className="inline-flex items-center gap-[0.35rem] text-content-muted">
                   <input
+                    className="accent-stroke-accent"
                     type="radio"
                     checked={bodyMode === "file"}
                     onChange={() => setBodyMode("file")}
@@ -1427,6 +1534,7 @@ export function App() {
                 </label>
 
                 <select
+                  className={controlSurfaceClass}
                   value={payloadLanguage}
                   onChange={(event) => setPayloadLanguage(event.target.value as PayloadLanguage)}
                   disabled={bodyMode !== "editor"}
@@ -1437,7 +1545,7 @@ export function App() {
               </div>
 
               {bodyMode === "editor" ? (
-                <div className="editor-shell">
+                <div className={editorBoxClass}>
                   <Editor
                     height="360px"
                     theme={monacoTheme}
@@ -1454,37 +1562,51 @@ export function App() {
                   />
                 </div>
               ) : (
-                <div className="file-shell">
-                  <input type="file" onChange={(event) => void onBodyFileSelect(event)} />
-                  <p>{fileName ? `Attached: ${fileName}` : "No file attached"}</p>
+                <div className="rounded-[10px] border border-stroke-default bg-surface-tertiary p-[0.8rem]">
+                  <input
+                    className={controlSurfaceClass}
+                    type="file"
+                    onChange={(event) => void onBodyFileSelect(event)}
+                  />
+                  <p className="mb-0 mt-[0.55rem] text-[0.86rem] text-content-muted">
+                    {fileName ? `Attached: ${fileName}` : "No file attached"}
+                  </p>
                 </div>
               )}
             </div>
           ) : null}
         </section>
 
-        <section className="response-panel">
-          <div className="response-top">
-            <nav className="tabs">
+        <section className={panelShellClass}>
+          <div className="flex items-center justify-between border-b border-stroke-default">
+            <nav className="flex gap-[0.45rem] p-[0.55rem_0.7rem]">
               <button
                 type="button"
-                className={responseTab === "request" ? "active" : undefined}
+                className={cn(tabButtonClass, responseTab === "request" && tabButtonActiveClass)}
                 onClick={() => setResponseTab("request")}
               >
                 Request
               </button>
               <button
                 type="button"
-                className={responseTab === "response" ? "active" : undefined}
+                className={cn(tabButtonClass, responseTab === "response" && tabButtonActiveClass)}
                 onClick={() => setResponseTab("response")}
               >
                 Response
               </button>
             </nav>
-            <p className="status">{statusText}</p>
+            <p className="m-0 pr-[0.8rem] font-semibold text-content-muted">{statusText}</p>
           </div>
 
-          {responseTab === "request" ? <pre>{requestPreview}</pre> : <pre>{responseText}</pre>}
+          {responseTab === "request" ? (
+            <pre className="m-0 h-[calc(100%-49px)] overflow-auto whitespace-pre-wrap break-words p-[0.8rem] font-mono text-[0.86rem]">
+              {requestPreview}
+            </pre>
+          ) : (
+            <pre className="m-0 h-[calc(100%-49px)] overflow-auto whitespace-pre-wrap break-words p-[0.8rem] font-mono text-[0.86rem]">
+              {responseText}
+            </pre>
+          )}
         </section>
       </main>
     </div>
