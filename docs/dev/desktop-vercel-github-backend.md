@@ -11,7 +11,7 @@ Scope:
 
 `apps/desktop/vercel.json` configures:
 - Vite static build output (`dist`)
-- Node.js Vercel Functions for `api/**/*.ts`
+- Node.js Vercel Functions for `api/**/*.ts` (duration only; runtime version is read from `apps/desktop/package.json` `engines.node`)
 - Explicit routed API endpoints:
   - `/api/auth/github/start`
   - `/api/auth/github/callback`
