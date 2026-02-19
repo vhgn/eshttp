@@ -1,4 +1,3 @@
-import Editor from "@monaco-editor/react";
 import {
   buildRequest,
   type Collection,
@@ -8,6 +7,7 @@ import {
   type RequestFile,
   type Workspace,
 } from "@eshttp/core";
+import Editor from "@monaco-editor/react";
 import type { ChangeEvent, ComponentProps } from "react";
 import { useEffect, useMemo, useState } from "react";
 import appIcon from "../src-tauri/icons/icon.png";
@@ -43,6 +43,12 @@ interface KeyValueRow {
   key: string;
   value: string;
   enabled: boolean;
+}
+
+interface ToastMessage {
+  id: string;
+  tone: "error" | "info";
+  text: string;
 }
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
@@ -479,6 +485,7 @@ export function App() {
   const [responseText, setResponseText] = useState("No request executed yet.");
   const [statusText, setStatusText] = useState("idle");
   const [requestPreview, setRequestPreview] = useState("GET https://httpbin.org/get");
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const accentPalette = ACCENTS_BY_THEME[themeName];
   const activeWorkspaceNode = useMemo(
@@ -691,27 +698,27 @@ export function App() {
       await refreshWorkspaceTree();
       setActiveWorkspaceId(workspaceId);
       setStatusText("workspace created");
+      if (workspaceId.startsWith("workspace:editable:")) {
+        pushToast("Workspace created in IndexedDB (filesystem API unavailable).", "info");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
     }
   }
 
   async function onCreateCollection() {
     if (!activeWorkspaceNode) {
       setStatusText("error");
-      setResponseText("Create or select a workspace before adding a collection.");
-      setResponseTab("response");
+      pushToast("Create or select a workspace before adding a collection.");
       return;
     }
 
     const nextPath = newCollectionPath.trim();
     if (!nextPath) {
       setStatusText("error");
-      setResponseText("Collection path is required.");
-      setResponseTab("response");
+      pushToast("Collection path is required.");
       return;
     }
 
@@ -724,16 +731,14 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
     }
   }
 
   async function onSaveRequest() {
     if (!selection) {
       setStatusText("error");
-      setResponseText("Select a request before saving.");
-      setResponseTab("response");
+      pushToast("Select a request before saving.");
       return;
     }
 
@@ -749,8 +754,7 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
     }
   }
 
@@ -769,8 +773,7 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
     }
   }
 
@@ -815,8 +818,7 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
     }
   }
 
@@ -843,6 +845,14 @@ export function App() {
   }
 
   const monacoTheme = MONACO_THEME_BY_APP_THEME[themeName];
+
+  function pushToast(text: string, tone: ToastMessage["tone"] = "error") {
+    const id = crypto.randomUUID();
+    setToasts((current) => [...current, { id, tone, text }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((entry) => entry.id !== id));
+    }, 3_200);
+  }
 
   function renderCollectionBranch(branch: CollectionTreeBranch, workspace: Workspace) {
     const node = branch.collectionNode;
@@ -968,6 +978,14 @@ export function App() {
 
   return (
     <div className="app-shell" data-theme={themeName}>
+      <div className="toast-stack" aria-live="polite" aria-atomic="true">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={toast.tone === "error" ? "toast toast-error" : "toast"}>
+            {toast.text}
+          </div>
+        ))}
+      </div>
+
       <aside className="workspace-rail">
         <button
           type="button"
