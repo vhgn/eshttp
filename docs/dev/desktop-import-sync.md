@@ -11,6 +11,10 @@ Scope:
 - `tauri`: imported path is stored in `ImportRecord.path`.
 - `web`: imported `FileSystemDirectoryHandle` is stored in `ImportRecord.handle`.
 
+Imports can also set `ImportRecord.storage`:
+- `filesystem` (default): writes are queued to `sync_queue` and flushed to disk.
+- `indexeddb`: workspace is cache-only (no external file sync, no queued writes).
+
 Imports are persisted in IndexedDB (`imports` store). Cache snapshots are stored in `workspace_cache`. Pending writes are stored in `sync_queue`.
 
 ## Workspace tree model
@@ -33,13 +37,53 @@ IDs are synthetic and stable per import:
 
 ## Create flow
 
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 `createWorkspace()` creates a new import record (directory picker in both runtimes) and returns the readonly workspace id.
+=======
+`createWorkspace()` creates a new import record and returns the active workspace id:
+- `tauri` and web with File System Access API: uses directory picker and returns readonly workspace id.
+- web without File System Access API: falls back to an IndexedDB-only workspace and returns editable workspace id.
+>>>>>>> theirs
+=======
+`createWorkspace()` creates a new import record and returns the active workspace id:
+- `tauri` and web with File System Access API: uses directory picker and returns readonly workspace id.
+- web without File System Access API: falls back to an IndexedDB-only workspace and returns editable workspace id.
+>>>>>>> theirs
+=======
+`createWorkspace()` creates a new import record and returns the active workspace id:
+- `tauri` and web with File System Access API: uses directory picker and returns readonly workspace id.
+- web without File System Access API: falls back to an IndexedDB-only workspace and returns editable workspace id.
+>>>>>>> theirs
+=======
+`createWorkspace()` creates a new import record and returns the active workspace id:
+- `tauri` and web with File System Access API: uses directory picker and returns readonly workspace id.
+- web without File System Access API: falls back to an IndexedDB-only workspace and returns editable workspace id.
+>>>>>>> theirs
 
 `createCollection(workspaceId, collectionPath)`:
 1. Normalizes a relative path (no empty path, no `.` / `..` segments).
 2. Ensures editable cache exists for the import.
 3. Adds the collection to cached workspace state.
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 4. Enqueues a sync write for `<collectionPath>/.env.default` with empty content.
+=======
+4. Enqueues a sync write for `<collectionPath>/.env.default` with empty content only for filesystem-backed imports.
+>>>>>>> theirs
+=======
+4. Enqueues a sync write for `<collectionPath>/.env.default` with empty content only for filesystem-backed imports.
+>>>>>>> theirs
+=======
+4. Enqueues a sync write for `<collectionPath>/.env.default` with empty content only for filesystem-backed imports.
+>>>>>>> theirs
+=======
+4. Enqueues a sync write for `<collectionPath>/.env.default` with empty content only for filesystem-backed imports.
+>>>>>>> theirs
 
 Because collection discovery requires `.http` files, newly created collections are guaranteed to appear in editable view immediately (cache-backed), while readonly discovery will include them once request files exist on disk.
 
@@ -49,7 +93,7 @@ Because collection discovery requires `.http` files, newly created collections a
 1. Resolve request from in-memory indexes.
 2. If request is readonly, create editable cache first (`ensureEditableWorkspace`).
 3. Update cached request text in `workspace_cache`.
-4. Enqueue sync op (`type: "write"`) in `sync_queue`.
+4. Enqueue sync op (`type: "write"`) in `sync_queue` only for filesystem-backed imports.
 
 Writes are asynchronous. The UI may show pending until `flushSyncQueue()` applies ops.
 

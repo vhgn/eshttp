@@ -9,6 +9,7 @@ import {
   getCacheWorkspace,
   type ImportRecord,
   type ImportRuntime,
+  type ImportStorage,
   listImports,
   listSyncQueue,
   putCacheWorkspace,
@@ -316,6 +317,10 @@ function makeImportNameFromPath(path: string): string {
   return basename(path);
 }
 
+function getImportStorage(record: ImportRecord): ImportStorage {
+  return record.storage ?? "filesystem";
+}
+
 export class CollectionsRepository {
   private readonly runtime: ImportRuntime;
   private syncLoop: ReturnType<typeof setInterval> | null = null;
@@ -349,13 +354,34 @@ export class CollectionsRepository {
 
   async createWorkspace(): Promise<string | null> {
     const record =
-      this.runtime === "tauri" ? await this.importFromTauri() : await this.importFromWebPicker();
+      this.runtime === "tauri"
+        ? await this.importFromTauri()
+        : await this.importFromWebPickerOrIndexedDb();
 
     if (!record) {
       return null;
     }
 
     await putImport(record);
+<<<<<<< ours
+<<<<<<< ours
+=======
+=======
+>>>>>>> theirs
+    if (getImportStorage(record) === "indexeddb") {
+      await putCacheWorkspace({
+        importId: record.id,
+        rootName: record.name,
+        collections: [],
+      });
+
+      return makeWorkspaceId("editable", record.id);
+    }
+
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
     return makeWorkspaceId("readonly", record.id);
   }
 
@@ -479,14 +505,16 @@ export class CollectionsRepository {
     request.text = text;
     await putCacheWorkspace(cache);
 
-    await putSyncOp({
-      id: crypto.randomUUID(),
-      importId: editable.importId,
-      type: "write",
-      relativePath: editable.requestRelativePath,
-      content: text,
-      createdAt: Date.now(),
-    });
+    if (await this.supportsExternalSync(editable.importId)) {
+      await putSyncOp({
+        id: crypto.randomUUID(),
+        importId: editable.importId,
+        type: "write",
+        relativePath: editable.requestRelativePath,
+        content: text,
+        createdAt: Date.now(),
+      });
+    }
 
     return {
       workspaceId: editable.workspaceId,
@@ -537,15 +565,24 @@ export class CollectionsRepository {
     collection.iconSvg = svg;
     await putCacheWorkspace(cache);
 
-    await putSyncOp({
-      id: crypto.randomUUID(),
-      importId: editable.importId,
-      type: "write",
-      relativePath:
-        editable.relativePath === "." ? "icon.svg" : `${editable.relativePath}/icon.svg`,
-      content: svg,
-      createdAt: Date.now(),
-    });
+    if (await this.supportsExternalSync(editable.importId)) {
+      await putSyncOp({
+        id: crypto.randomUUID(),
+        importId: editable.importId,
+        type: "write",
+        relativePath:
+          editable.relativePath === "." ? "icon.svg" : `${editable.relativePath}/icon.svg`,
+        content: svg,
+        createdAt: Date.now(),
+      });
+    }
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 
     return {
       workspaceId: editable.workspaceId,
@@ -587,6 +624,9 @@ export class CollectionsRepository {
     cache.collections.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
     await putCacheWorkspace(cache);
 
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
     await putSyncOp({
       id: crypto.randomUUID(),
       importId: workspace.importId,
@@ -595,6 +635,75 @@ export class CollectionsRepository {
       content: "",
       createdAt: Date.now(),
     });
+=======
+    if (await this.supportsExternalSync(workspace.importId)) {
+      await putSyncOp({
+        id: crypto.randomUUID(),
+        importId: workspace.importId,
+        type: "write",
+        relativePath: `${relativePathValue}/.env.default`,
+        content: "",
+        createdAt: Date.now(),
+      });
+    }
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+
+    return {
+      workspaceId: makeWorkspaceId("editable", workspace.importId),
+      collectionId: makeCollectionId("editable", workspace.importId, relativePathValue),
+    };
+  }
+
+  async createCollection(
+    workspaceId: string,
+    collectionPath: string,
+  ): Promise<{ workspaceId: string; collectionId: string }> {
+    const workspace = this.workspaceIndex.get(workspaceId);
+    if (!workspace) {
+      throw new Error("Workspace not found in workspace tree");
+    }
+
+    const relativePathValue = normalizeCollectionRelativePath(collectionPath);
+    if (!relativePathValue) {
+      throw new Error("Collection path must be a non-empty relative path.");
+    }
+
+    await this.ensureEditableWorkspace(workspace.importId);
+
+    const cache = await getCacheWorkspace(workspace.importId);
+    if (!cache) {
+      throw new Error("Failed to initialize editable cache workspace");
+    }
+
+    if (cache.collections.some((entry) => entry.relativePath === relativePathValue)) {
+      throw new Error(`Collection already exists at: ${relativePathValue}`);
+    }
+
+    cache.collections.push({
+      relativePath: relativePathValue,
+      name: relativePathValue,
+      requests: [],
+      iconSvg: null,
+    });
+    cache.collections.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+    await putCacheWorkspace(cache);
+
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+    if (await this.supportsExternalSync(workspace.importId)) {
+      await putSyncOp({
+        id: crypto.randomUUID(),
+        importId: workspace.importId,
+        type: "write",
+        relativePath: `${relativePathValue}/.env.default`,
+        content: "",
+        createdAt: Date.now(),
+      });
+    }
 
     return {
       workspaceId: makeWorkspaceId("editable", workspace.importId),
@@ -989,6 +1098,15 @@ export class CollectionsRepository {
       throw new Error("Import metadata not found");
     }
 
+    if (getImportStorage(importRecord) === "indexeddb") {
+      await putCacheWorkspace({
+        importId: importRecord.id,
+        rootName: importRecord.name,
+        collections: [],
+      });
+      return;
+    }
+
     const cache =
       importRecord.runtime === "tauri"
         ? await this.snapshotReadonlyTauriWorkspace(importRecord)
@@ -1087,6 +1205,21 @@ export class CollectionsRepository {
     };
   }
 
+  private async supportsExternalSync(importId: string): Promise<boolean> {
+    const importRecord = await this.getImport(importId);
+    if (!importRecord) {
+      throw new Error(`Import ${importId} not found`);
+    }
+
+    if (getImportStorage(importRecord) === "indexeddb") {
+      return false;
+    }
+
+    return importRecord.runtime === "tauri"
+      ? Boolean(importRecord.path)
+      : Boolean(importRecord.handle);
+  }
+
   private async applySyncWrite(
     importId: string,
     relativePathValue: string,
@@ -1095,6 +1228,10 @@ export class CollectionsRepository {
     const importRecord = await this.getImport(importId);
     if (!importRecord) {
       throw new Error(`Import ${importId} not found`);
+    }
+
+    if (getImportStorage(importRecord) === "indexeddb") {
+      return;
     }
 
     if (importRecord.runtime === "tauri") {
@@ -1132,21 +1269,32 @@ export class CollectionsRepository {
       id: crypto.randomUUID(),
       name: makeImportNameFromPath(selected),
       runtime: "tauri",
+      storage: "filesystem",
       path: selected,
       createdAt: Date.now(),
     };
   }
 
-  private async importFromWebPicker(): Promise<ImportRecord | null> {
+  private async importFromWebPickerOrIndexedDb(): Promise<ImportRecord | null> {
     const picker = (
       window as Window & { showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle> }
     ).showDirectoryPicker;
 
     if (!picker) {
-      throw new Error("This browser does not support directory picking (File System Access API).");
+      return this.createIndexedDbWorkspaceRecord();
     }
 
-    const handle = await picker();
+    let handle: FileSystemDirectoryHandle;
+    try {
+      handle = await picker();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return null;
+      }
+
+      throw error;
+    }
+
     const hasPermission = await ensureReadWritePermission(handle);
     if (!hasPermission) {
       throw new Error("Read/write permission was not granted for the selected directory.");
@@ -1156,7 +1304,20 @@ export class CollectionsRepository {
       id: crypto.randomUUID(),
       name: handle.name,
       runtime: "web",
+      storage: "filesystem",
       handle,
+      createdAt: Date.now(),
+    };
+  }
+
+  private async createIndexedDbWorkspaceRecord(): Promise<ImportRecord> {
+    const imports = await listImports();
+    const localCount = imports.filter((entry) => getImportStorage(entry) === "indexeddb").length;
+    return {
+      id: crypto.randomUUID(),
+      name: `local-${localCount + 1}`,
+      runtime: "web",
+      storage: "indexeddb",
       createdAt: Date.now(),
     };
   }

@@ -1,10 +1,12 @@
 export type ImportRuntime = "tauri" | "web";
+export type ImportStorage = "filesystem" | "indexeddb";
 
 export interface ImportRecord {
   id: string;
   name: string;
   runtime: ImportRuntime;
   createdAt: number;
+  storage?: ImportStorage;
   path?: string;
   handle?: FileSystemDirectoryHandle;
 }

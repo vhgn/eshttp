@@ -1,4 +1,3 @@
-import Editor from "@monaco-editor/react";
 import {
   buildRequest,
   type Collection,
@@ -8,6 +7,7 @@ import {
   type RequestFile,
   type Workspace,
 } from "@eshttp/core";
+import Editor from "@monaco-editor/react";
 import type { ChangeEvent, ComponentProps } from "react";
 import { useEffect, useMemo, useState } from "react";
 import appIcon from "../src-tauri/icons/icon.png";
@@ -43,6 +43,12 @@ interface KeyValueRow {
   key: string;
   value: string;
   enabled: boolean;
+}
+
+interface ToastMessage {
+  id: string;
+  tone: "error" | "info";
+  text: string;
 }
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
@@ -479,6 +485,7 @@ export function App() {
   const [responseText, setResponseText] = useState("No request executed yet.");
   const [statusText, setStatusText] = useState("idle");
   const [requestPreview, setRequestPreview] = useState("GET https://httpbin.org/get");
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const accentPalette = ACCENTS_BY_THEME[themeName];
   const activeWorkspaceNode = useMemo(
@@ -691,27 +698,47 @@ export function App() {
       await refreshWorkspaceTree();
       setActiveWorkspaceId(workspaceId);
       setStatusText("workspace created");
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+=======
+      if (workspaceId.startsWith("workspace:editable:")) {
+        pushToast("Workspace created in IndexedDB (filesystem API unavailable).", "info");
+      }
+>>>>>>> theirs
+=======
+      if (workspaceId.startsWith("workspace:editable:")) {
+        pushToast("Workspace created in IndexedDB (filesystem API unavailable).", "info");
+      }
+>>>>>>> theirs
+=======
+      if (workspaceId.startsWith("workspace:editable:")) {
+        pushToast("Workspace created in IndexedDB (filesystem API unavailable).", "info");
+      }
+>>>>>>> theirs
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
+<<<<<<< ours
+<<<<<<< ours
+=======
+>>>>>>> theirs
     }
   }
 
   async function onCreateCollection() {
     if (!activeWorkspaceNode) {
       setStatusText("error");
-      setResponseText("Create or select a workspace before adding a collection.");
-      setResponseTab("response");
+      pushToast("Create or select a workspace before adding a collection.");
       return;
     }
 
     const nextPath = newCollectionPath.trim();
     if (!nextPath) {
       setStatusText("error");
-      setResponseText("Collection path is required.");
-      setResponseTab("response");
+      pushToast("Collection path is required.");
       return;
     }
 
@@ -724,16 +751,81 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
+<<<<<<< ours
+=======
+>>>>>>> theirs
+    }
+  }
+
+  async function onCreateCollection() {
+    if (!activeWorkspaceNode) {
+      setStatusText("error");
+      pushToast("Create or select a workspace before adding a collection.");
+      return;
+    }
+
+    const nextPath = newCollectionPath.trim();
+    if (!nextPath) {
+      setStatusText("error");
+      pushToast("Collection path is required.");
+      return;
+    }
+
+    try {
+      const result = await repository.createCollection(activeWorkspaceNode.workspace.id, nextPath);
+      await refreshWorkspaceTree();
+      setActiveWorkspaceId(result.workspaceId);
+      setNewCollectionPath("");
+      setStatusText("collection created");
+=======
+      if (workspaceId.startsWith("workspace:editable:")) {
+        pushToast("Workspace created in IndexedDB (filesystem API unavailable).", "info");
+      }
+>>>>>>> theirs
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusText("error");
+      pushToast(message);
+<<<<<<< ours
+    }
+  }
+
+  async function onCreateCollection() {
+    if (!activeWorkspaceNode) {
+      setStatusText("error");
+      pushToast("Create or select a workspace before adding a collection.");
+      return;
+    }
+
+    const nextPath = newCollectionPath.trim();
+    if (!nextPath) {
+      setStatusText("error");
+      pushToast("Collection path is required.");
+      return;
+    }
+
+    try {
+      const result = await repository.createCollection(activeWorkspaceNode.workspace.id, nextPath);
+      await refreshWorkspaceTree();
+      setActiveWorkspaceId(result.workspaceId);
+      setNewCollectionPath("");
+      setStatusText("collection created");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusText("error");
+      pushToast(message);
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
     }
   }
 
   async function onSaveRequest() {
     if (!selection) {
       setStatusText("error");
-      setResponseText("Select a request before saving.");
-      setResponseTab("response");
+      pushToast("Select a request before saving.");
       return;
     }
 
@@ -749,8 +841,7 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
     }
   }
 
@@ -769,8 +860,7 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
     }
   }
 
@@ -815,8 +905,7 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatusText("error");
-      setResponseText(message);
-      setResponseTab("response");
+      pushToast(message);
     }
   }
 
@@ -844,6 +933,35 @@ export function App() {
 
   const monacoTheme = MONACO_THEME_BY_APP_THEME[themeName];
 
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+  function pushToast(text: string, tone: ToastMessage["tone"] = "error") {
+    const id = crypto.randomUUID();
+    setToasts((current) => [...current, { id, tone, text }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((entry) => entry.id !== id));
+    }, 3_200);
+  }
+
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
   function renderCollectionBranch(branch: CollectionTreeBranch, workspace: Workspace) {
     const node = branch.collectionNode;
     const hasSelectedRequest = node?.requests.some(
@@ -968,6 +1086,35 @@ export function App() {
 
   return (
     <div className="app-shell" data-theme={themeName}>
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+      <div className="toast-stack" aria-live="polite" aria-atomic="true">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={toast.tone === "error" ? "toast toast-error" : "toast"}>
+            {toast.text}
+          </div>
+        ))}
+      </div>
+
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
       <aside className="workspace-rail">
         <button
           type="button"
