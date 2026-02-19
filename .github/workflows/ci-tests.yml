@@ -38,8 +38,8 @@ jobs:
             if [ -n "$PUSH_BEFORE_SHA" ] && [ "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
               base="$PUSH_BEFORE_SHA"
             else
-              git fetch origin "$DEFAULT_BRANCH" --depth=1
-              base="$(git merge-base HEAD "origin/$DEFAULT_BRANCH")"
+              git fetch origin "$DEFAULT_BRANCH"
+              base="$(git merge-base HEAD "origin/$DEFAULT_BRANCH" || true)"
             fi
           fi
 
