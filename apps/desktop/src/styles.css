@@ -78,6 +78,32 @@ select {
   font: inherit;
 }
 
+.toast-stack {
+  position: fixed;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 30;
+  display: grid;
+  gap: 0.45rem;
+  pointer-events: none;
+}
+
+.toast {
+  max-width: min(80vw, 420px);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: color-mix(in srgb, var(--surface-2) 90%, #000);
+  color: var(--ink);
+  font-size: 0.85rem;
+  box-shadow: 0 12px 24px color-mix(in srgb, #000 35%, transparent);
+}
+
+.toast-error {
+  border-color: color-mix(in srgb, #ff8f8f 55%, var(--line));
+  background: color-mix(in srgb, #6b2828 24%, var(--surface-2));
+}
+
 .workspace-rail {
   border-right: 1px solid var(--line);
   background: linear-gradient(
