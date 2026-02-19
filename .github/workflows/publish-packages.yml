@@ -1,10 +1,15 @@
 name: Publish Packages
 
 on:
-  push:
-    branches:
-      - main
+  release:
+    types:
+      - created
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to simulate (e.g. core-v1.2.3 or cli-v1.2.3)
+        required: false
+        type: string
 
 jobs:
   detect:
@@ -12,40 +17,30 @@ jobs:
     outputs:
       publish_core: ${{ steps.detect.outputs.publish_core }}
       publish_cli: ${{ steps.detect.outputs.publish_cli }}
-      core_version: ${{ steps.detect.outputs.core_version }}
-      cli_version: ${{ steps.detect.outputs.cli_version }}
+      release_version: ${{ steps.detect.outputs.release_version }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Detect publishable version changes
+      - name: Detect release target from tag
         id: detect
+        env:
+          TAG_NAME: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
         run: |
-          core_name=$(node -p "JSON.parse(require('fs').readFileSync('libs/core/package.json','utf8')).name")
-          core_version=$(node -p "JSON.parse(require('fs').readFileSync('libs/core/package.json','utf8')).version")
-          core_published=$(npm view "$core_name" version 2>/dev/null || true)
+          tag="$TAG_NAME"
+          semver='[0-9]+\.[0-9]+\.[0-9]+([-][0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?'
 
-          if [ -z "$core_published" ] || [ "$core_published" != "$core_version" ]; then
-            echo "publish_core=true" >> "$GITHUB_OUTPUT"
+          if [[ "$tag" =~ ^core[-/]v?($semver)$ ]] || [[ "$tag" =~ ^eshttp-core@v?($semver)$ ]]; then
+            target="core"
+            version="${BASH_REMATCH[1]}"
+          elif [[ "$tag" =~ ^cli[-/]v?($semver)$ ]] || [[ "$tag" =~ ^eshttp@v?($semver)$ ]]; then
+            target="cli"
+            version="${BASH_REMATCH[1]}"
           else
-            echo "publish_core=false" >> "$GITHUB_OUTPUT"
+            echo "Unsupported release tag '$tag'. Use core-vX.Y.Z or cli-vX.Y.Z."
+            exit 1
           fi
 
-          cli_name=$(node -p "JSON.parse(require('fs').readFileSync('apps/cli/package.json','utf8')).name")
-          cli_version=$(node -p "JSON.parse(require('fs').readFileSync('apps/cli/package.json','utf8')).version")
-          cli_published=$(npm view "$cli_name" version 2>/dev/null || true)
-
-          if [ -z "$cli_published" ] || [ "$cli_published" != "$cli_version" ]; then
-            echo "publish_cli=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish_cli=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          echo "core_version=$core_version" >> "$GITHUB_OUTPUT"
-          echo "cli_version=$cli_version" >> "$GITHUB_OUTPUT"
+          echo "publish_core=$([ "$target" = "core" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "publish_cli=$([ "$target" = "cli" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "release_version=$version" >> "$GITHUB_OUTPUT"
 
   publish_core:
     runs-on: ubuntu-latest
@@ -70,6 +65,10 @@ jobs:
         working-directory: libs/core
         run: bun run build
 
+      - name: Set core version from release tag
+        run: npm version "${{ needs.detect.outputs.release_version }}" --no-git-tag-version
+        working-directory: libs/core
+
       - name: Publish core
         working-directory: libs/core
         run: npm publish --access public
@@ -78,10 +77,8 @@ jobs:
 
   publish_cli:
     runs-on: ubuntu-latest
-    needs:
-      - detect
-      - publish_core
-    if: needs.detect.outputs.publish_cli == 'true' && (needs.publish_core.result == 'success' || needs.publish_core.result == 'skipped')
+    needs: detect
+    if: needs.detect.outputs.publish_cli == 'true'
     permissions:
       contents: read
     steps:
@@ -105,8 +102,12 @@ jobs:
         working-directory: apps/cli
         run: bun run build
 
+      - name: Set CLI version from release tag
+        run: npm version "${{ needs.detect.outputs.release_version }}" --no-git-tag-version
+        working-directory: apps/cli
+
       - name: Pin published core dependency version for CLI
-        run: npm pkg set dependencies.eshttp-core="^${{ needs.detect.outputs.core_version }}"
+        run: npm pkg set dependencies.eshttp-core="^${{ needs.detect.outputs.release_version }}"
         working-directory: apps/cli
 
       - name: Publish cli
