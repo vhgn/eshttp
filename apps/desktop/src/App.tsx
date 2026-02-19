@@ -1,68 +1,38 @@
-import {
-  buildRequest,
-  type Collection,
-  mergeEnvironment,
-  parseEnvText,
-  parseHttpRequestText,
-  type RequestFile,
-  type Workspace,
-} from "@eshttp/core";
-import Editor from "@monaco-editor/react";
+import { buildRequest, mergeEnvironment, parseEnvText, parseHttpRequestText } from "@eshttp/core";
+import type Editor from "@monaco-editor/react";
 import type { ChangeEvent, ComponentProps } from "react";
 import { useEffect, useMemo, useState } from "react";
-import appIcon from "../src-tauri/icons/icon.png";
-import { Button } from "./components/Button";
-import { InlineMonacoInput } from "./components/InlineMonacoInput";
-import { COLLECTION_ICON_OPTIONS, svgToDataUri } from "./data/collectionIcons";
+import { ToastStack } from "./components/ToastStack";
+import { WorkspaceRail } from "./components/WorkspaceRail";
+import { COLLECTION_ICON_OPTIONS } from "./data/collectionIcons";
 import { createCollectionsRepository, type WorkspaceTreeNode } from "./data/collectionsRepository";
 import { registerInlineLanguage, setInlineCompletionEnvKeys } from "./monaco/inlineLanguage";
 import { createDesktopTransport } from "./transports";
+import { RequestWorkbenchView } from "./views/RequestWorkbenchView";
+import type {
+  AccentOption,
+  BodyMode,
+  CollectionTreeBranch,
+  HttpMethod,
+  KeyValueRow,
+  PanelTab,
+  PayloadLanguage,
+  ResponseTab,
+  Selection,
+  ThemeName,
+  ToastMessage,
+} from "./views/types";
+import { HTTP_METHODS } from "./views/types";
+import { WorkspaceSidebarView } from "./views/WorkspaceSidebarView";
 
-interface Selection {
-  workspace: Workspace;
-  collection: Collection;
-  request: RequestFile;
-}
-
-interface CollectionTreeBranch {
-  key: string;
-  label: string;
-  relativePath: string;
-  collectionNode: WorkspaceTreeNode["collections"][number] | null;
-  children: CollectionTreeBranch[];
-}
-
-type ThemeName = "black" | "light" | "soft" | "gruvbox";
-type BodyMode = "editor" | "file";
-type PayloadLanguage = "json" | "graphql";
-type PanelTab = "params" | "headers" | "auth" | "body";
-type ResponseTab = "request" | "response";
 type Monaco = Parameters<NonNullable<ComponentProps<typeof Editor>["beforeMount"]>>[0];
-
-interface KeyValueRow {
-  id: string;
-  key: string;
-  value: string;
-  enabled: boolean;
-}
-
-interface ToastMessage {
-  id: string;
-  tone: "error" | "info";
-  text: string;
-}
-
-const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
 const MONACO_THEME_BY_APP_THEME: Record<ThemeName, string> = {
   black: "eshttp-black",
   light: "eshttp-light",
   soft: "eshttp-soft",
   gruvbox: "eshttp-gruvbox",
 };
-const ACCENTS_BY_THEME: Record<
-  ThemeName,
-  Array<{ token: string; label: string; value: string }>
-> = {
+const ACCENTS_BY_THEME: Record<ThemeName, AccentOption[]> = {
   black: [
     { token: "accent-1", label: "Primary", value: "#6bcf6a" },
     { token: "accent-2", label: "Mint", value: "#84d1a0" },
@@ -94,10 +64,6 @@ const ACCENTS_BY_THEME: Record<
 };
 
 let monacoThemesRegistered = false;
-
-function cn(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(" ");
-}
 
 function registerMonacoThemes(monaco: Monaco) {
   registerInlineLanguage(monaco);
@@ -476,7 +442,7 @@ export function App() {
   const [panelTab, setPanelTab] = useState<PanelTab>("body");
   const [responseTab, setResponseTab] = useState<ResponseTab>("response");
 
-  const [method, setMethod] = useState<(typeof HTTP_METHODS)[number]>("GET");
+  const [method, setMethod] = useState<HttpMethod>("GET");
   const [baseUrl, setBaseUrl] = useState("https://httpbin.org/get");
   const [queryRows, setQueryRows] = useState<KeyValueRow[]>([]);
   const [headerRows, setHeaderRows] = useState<KeyValueRow[]>([]);
@@ -633,8 +599,8 @@ export function App() {
       const parsed = parseHttpRequestText(text, nextSelection.request.title);
 
       const methodFromFile = parsed.method.toUpperCase();
-      if (HTTP_METHODS.includes(methodFromFile as (typeof HTTP_METHODS)[number])) {
-        setMethod(methodFromFile as (typeof HTTP_METHODS)[number]);
+      if (HTTP_METHODS.includes(methodFromFile as HttpMethod)) {
+        setMethod(methodFromFile as HttpMethod);
       }
 
       const { baseUrl: parsedBaseUrl, rows: parsedQueryRows } = parseQueryRows(parsed.url);
@@ -849,7 +815,7 @@ export function App() {
     }
   }
 
-  async function onApplyCollectionIcon(collection: Collection) {
+  async function onApplyCollectionIcon(collectionId: string) {
     try {
       const accent =
         accentPalette.find((entry) => entry.token === selectedAccentToken) ?? accentPalette[0];
@@ -857,7 +823,7 @@ export function App() {
         return;
       }
 
-      await repository.setCollectionIcon(collection.id, selectedIconId, accent.value);
+      await repository.setCollectionIcon(collectionId, selectedIconId, accent.value);
       await refreshWorkspaceTree();
       setActiveCollectionIconEditor(null);
       setStatusText("icon updated");
@@ -936,23 +902,6 @@ export function App() {
   }
 
   const monacoTheme = MONACO_THEME_BY_APP_THEME[themeName];
-  const mutedTextClass = "m-0 mt-[0.2rem] text-[0.86rem] text-content-muted";
-  const panelShellClass =
-    "overflow-hidden rounded-panel border border-stroke-default bg-[linear-gradient(180deg,var(--surface-primary),var(--surface-secondary))]";
-  const sidebarPanelClass =
-    "mb-[0.9rem] rounded-panel border border-stroke-default bg-[linear-gradient(170deg,var(--surface-secondary),var(--surface-tertiary))] p-[0.72rem]";
-  const controlGridClass = "mb-[0.9rem] grid gap-[0.35rem] text-[0.9rem]";
-  const controlSurfaceClass =
-    "rounded-control border border-stroke-default bg-surface-secondary px-[0.55rem] py-[0.45rem] text-content-primary disabled:cursor-not-allowed disabled:opacity-60";
-  const tabButtonActiveClass =
-    "bg-surface-tertiary border-[color-mix(in_srgb,var(--stroke-accent)_40%,var(--stroke-default))]";
-  const kvGridClass =
-    "grid grid-cols-[1fr_1fr_74px_96px] items-center gap-[0.5rem] p-[0.72rem] max-[1080px]:grid-cols-1";
-  const kvHeadClass = "text-[0.82rem] text-content-muted";
-  const addRowClass = "col-span-2 max-[1080px]:col-span-1";
-  const iconOptionClass =
-    "grid place-items-center rounded-[6px] border border-stroke-default bg-surface-tertiary py-[0.3rem] text-content-primary";
-  const editorBoxClass = "overflow-hidden rounded-[10px] border border-stroke-default";
 
   function pushToast(text: string, tone: ToastMessage["tone"] = "error") {
     const id = crypto.randomUUID();
@@ -962,142 +911,32 @@ export function App() {
     }, 3_200);
   }
 
-  function renderCollectionBranch(branch: CollectionTreeBranch, workspace: Workspace) {
-    const node = branch.collectionNode;
-    const hasSelectedRequest = node?.requests.some(
-      (request) => request.id === selection?.request.id,
+  function onThemeChange(nextTheme: ThemeName) {
+    setThemeName(nextTheme);
+    setSelectedAccentToken("accent-1");
+  }
+
+  function updateQueryRowValue(
+    rowId: string,
+    nextValue: Partial<Pick<KeyValueRow, "key" | "value" | "enabled">>,
+  ) {
+    setQueryRows((current) =>
+      updateRow(current, rowId, (target) => ({
+        ...target,
+        ...nextValue,
+      })),
     );
+  }
 
-    return (
-      <div key={`branch:${branch.key}`} className="grid gap-[0.36rem]">
-        {node ? (
-          <div className="rounded-tile border border-[color-mix(in_srgb,var(--stroke-default)_90%,transparent)] bg-[color-mix(in_srgb,var(--surface-secondary)_86%,transparent)] p-[0.45rem]">
-            <div className="mb-[0.35rem] flex items-center justify-between gap-[0.4rem]">
-              <h3 className="m-0 flex items-center gap-[0.4rem] text-[0.84rem] text-content-muted">
-                {node.iconSvg ? (
-                  <img
-                    className="inline-block h-[14px] w-[14px]"
-                    src={svgToDataUri(node.iconSvg)}
-                    alt=""
-                    aria-hidden
-                  />
-                ) : (
-                  <span className="text-[0.78rem] text-stroke-accent" aria-hidden>
-                    ◇
-                  </span>
-                )}
-                {node.collection.name}
-              </h3>
-              <Button
-                variant="secondary"
-                size="xs"
-                className="text-content-muted"
-                onClick={() =>
-                  setActiveCollectionIconEditor((current) =>
-                    current === node.collection.id ? null : node.collection.id,
-                  )
-                }
-              >
-                Icon
-              </Button>
-            </div>
-            {activeCollectionIconEditor === node.collection.id ? (
-              <div className="mb-[0.45rem] mt-[0.15rem] rounded-control border border-stroke-default bg-surface-secondary p-[0.45rem]">
-                <div className="mb-[0.4rem] grid grid-cols-8 gap-[0.22rem]">
-                  {COLLECTION_ICON_OPTIONS.map((entry) => {
-                    const Icon = entry.icon;
-                    const isSelected = selectedIconId === entry.id;
-                    return (
-                      <Button
-                        key={entry.id}
-                        variant="secondary"
-                        size="none"
-                        title={entry.label}
-                        className={cn(
-                          iconOptionClass,
-                          isSelected &&
-                            "border-[color-mix(in_srgb,var(--stroke-accent)_55%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_18%,var(--surface-tertiary))]",
-                        )}
-                        onClick={() => setSelectedIconId(entry.id)}
-                      >
-                        <Icon size={18} weight="duotone" />
-                      </Button>
-                    );
-                  })}
-                </div>
-                <div className="mb-[0.4rem] grid grid-cols-5 gap-[0.26rem]">
-                  {accentPalette.map((entry) => (
-                    <Button
-                      key={entry.token}
-                      variant="ghost"
-                      size="none"
-                      title={entry.label}
-                      className={cn(
-                        "h-[20px] w-full rounded-pill border border-stroke-default hover:bg-transparent",
-                        selectedAccentToken === entry.token &&
-                          "shadow-[0_0_0_2px_color-mix(in_srgb,var(--stroke-accent)_45%,transparent)]",
-                      )}
-                      style={{ backgroundColor: entry.value }}
-                      onClick={() => setSelectedAccentToken(entry.token)}
-                    />
-                  ))}
-                </div>
-                <Button
-                  variant="accent"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => void onApplyCollectionIcon(node.collection)}
-                >
-                  Apply Icon
-                </Button>
-              </div>
-            ) : null}
-            {node.requests.length === 0 ? (
-              <p className="my-[0.28rem] text-[0.82rem] text-content-muted">No requests yet.</p>
-            ) : null}
-            {node.requests.map((request) => {
-              const isSelected = selection?.request.id === request.id;
-              return (
-                <Button
-                  variant="ghost"
-                  size="none"
-                  key={request.id}
-                  className={cn(
-                    "mb-[0.35rem] w-full justify-start rounded-control px-[0.58rem] py-[0.46rem] text-left",
-                    isSelected &&
-                      "border-[color-mix(in_srgb,var(--stroke-accent)_45%,var(--stroke-default))] bg-surface-active",
-                  )}
-                  onClick={() =>
-                    void onSelectRequest({
-                      workspace,
-                      collection: node.collection,
-                      request,
-                    })
-                  }
-                >
-                  {request.title}
-                </Button>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="m-0 text-[0.78rem] uppercase tracking-[0.04em] text-content-muted">
-            {branch.label}
-          </p>
-        )}
-
-        {branch.children.length > 0 ? (
-          <div
-            className={cn(
-              "ml-[0.55rem] grid gap-[0.36rem] border-l border-[color-mix(in_srgb,var(--stroke-default)_78%,transparent)] pl-[0.55rem]",
-              hasSelectedRequest &&
-                "border-l-[color-mix(in_srgb,var(--stroke-accent)_45%,var(--stroke-default))]",
-            )}
-          >
-            {branch.children.map((child) => renderCollectionBranch(child, workspace))}
-          </div>
-        ) : null}
-      </div>
+  function updateHeaderRowValue(
+    rowId: string,
+    nextValue: Partial<Pick<KeyValueRow, "key" | "value" | "enabled">>,
+  ) {
+    setHeaderRows((current) =>
+      updateRow(current, rowId, (target) => ({
+        ...target,
+        ...nextValue,
+      })),
     );
   }
 
@@ -1106,565 +945,86 @@ export function App() {
       className="app-shell grid min-h-screen grid-cols-[78px_316px_1fr] bg-canvas max-[1080px]:grid-cols-1 max-[1080px]:grid-rows-[auto_auto_1fr]"
       data-theme={themeName}
     >
-      <div
-        className="pointer-events-none fixed right-[0.9rem] top-[0.9rem] z-30 grid gap-[0.45rem]"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={cn(
-              "max-w-[min(80vw,420px)] rounded-tile border border-[color-mix(in_srgb,var(--stroke-default)_70%,transparent)] bg-[color-mix(in_srgb,var(--surface-secondary)_90%,#000)] px-[0.7rem] py-[0.55rem] text-[0.85rem] text-content-primary shadow-toast",
-              toast.tone === "error" &&
-                "border-[color-mix(in_srgb,var(--status-error)_55%,var(--stroke-default))] bg-[color-mix(in_srgb,#6b2828_24%,var(--surface-secondary))]",
-            )}
-          >
-            {toast.text}
-          </div>
-        ))}
-      </div>
-
-      <aside className="flex flex-col items-center gap-[0.7rem] border-r border-stroke-default bg-[linear-gradient(190deg,var(--surface-primary),color-mix(in_srgb,var(--surface-secondary)_84%,#000))] px-[0.5rem] py-[0.72rem] max-[1080px]:flex-row max-[1080px]:justify-start max-[1080px]:overflow-x-auto max-[1080px]:border-b max-[1080px]:border-r-0 max-[1080px]:px-[0.52rem] max-[1080px]:py-[0.58rem]">
-        <Button
-          variant="accent"
-          size="icon"
-          className="border-[color-mix(in_srgb,var(--stroke-accent)_52%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_24%,var(--surface-tertiary))]"
-          title="Create workspace"
-          aria-label="Create workspace"
-          onClick={() => void onCreateWorkspace()}
-        >
-          +
-        </Button>
-        <div className="grid w-full justify-items-center gap-[0.5rem] overflow-auto pb-[0.3rem] max-[1080px]:flex max-[1080px]:w-auto max-[1080px]:gap-[0.44rem] max-[1080px]:overflow-visible max-[1080px]:pb-0">
-          {workspaceTree.map((tree) => {
-            const isActive = activeWorkspaceNode?.workspace.id === tree.workspace.id;
-            return (
-              <Button
-                variant="secondary"
-                size="none"
-                key={tree.workspace.id}
-                className={cn(
-                  "relative grid h-[42px] w-[42px] place-items-center rounded-[13px] border border-stroke-default bg-surface-secondary text-content-muted",
-                  isActive &&
-                    "border-[color-mix(in_srgb,var(--stroke-accent)_58%,var(--stroke-default))] bg-[color-mix(in_srgb,var(--stroke-accent)_20%,var(--surface-secondary))] text-content-primary",
-                )}
-                title={tree.workspace.name}
-                onClick={() => setActiveWorkspaceId(tree.workspace.id)}
-              >
-                <span className="text-[0.64rem] font-bold tracking-[0.04em]">
-                  {tree.workspace.name.slice(0, 2).toUpperCase()}
-                </span>
-                <span
-                  className={cn(
-                    "absolute bottom-[-3px] right-[-3px] h-[9px] w-[9px] rounded-pill border border-[color-mix(in_srgb,var(--stroke-default)_80%,transparent)] bg-[color-mix(in_srgb,var(--content-muted)_45%,transparent)]",
-                    tree.syncState === "synced" &&
-                      "bg-[color-mix(in_srgb,var(--status-success)_70%,var(--surface-tertiary))]",
-                    tree.syncState === "pending" &&
-                      "bg-[color-mix(in_srgb,var(--status-warning)_65%,var(--surface-tertiary))]",
-                    tree.syncState === "error" &&
-                      "bg-[color-mix(in_srgb,var(--status-error)_68%,var(--surface-tertiary))]",
-                  )}
-                />
-              </Button>
-            );
-          })}
-        </div>
-      </aside>
-
-      <aside className="overflow-auto border-r border-stroke-default bg-[linear-gradient(170deg,var(--surface-primary),var(--surface-secondary))] px-[0.9rem] py-[1rem] max-[1080px]:max-h-[42vh] max-[1080px]:border-b max-[1080px]:border-r-0">
-        <div className="mb-[1rem]">
-          <div className="inline-flex items-center gap-[0.45rem]">
-            <img src={appIcon} alt="" aria-hidden className="block h-[18px] w-[18px]" />
-            <h1 className="m-0 text-[1.15rem] tracking-[0.02em]">eshttp</h1>
-          </div>
-          <p className={mutedTextClass}>Desktop HTTP Client</p>
-          <Button
-            variant="accent"
-            className="mt-[0.7rem] w-full"
-            onClick={() => void onCreateWorkspace()}
-          >
-            Create Workspace
-          </Button>
-          <Button
-            variant="accent"
-            className="mt-[0.42rem] w-full"
-            onClick={() => void onImportGitHubWorkspaces()}
-          >
-            Import GitHub Workspaces
-          </Button>
-
-          {activeWorkspaceNode ? (
-            <>
-              <div className="mt-[0.66rem] flex items-baseline justify-between gap-[0.4rem]">
-                <h2 className="m-0 text-[0.95rem]">{activeWorkspaceNode.workspace.name}</h2>
-                <div className="inline-flex gap-[0.3rem]">
-                  <span
-                    className={cn(
-                      "rounded-pill border border-stroke-default px-[0.44rem] py-[0.1rem] text-[0.7rem] uppercase tracking-[0.04em]",
-                      activeWorkspaceNode.mode === "readonly" && "text-content-muted",
-                      activeWorkspaceNode.mode === "editable" && "text-stroke-accent",
-                    )}
-                  >
-                    {activeWorkspaceNode.mode}
-                  </span>
-                  <span
-                    className={cn(
-                      "rounded-pill border border-stroke-default px-[0.44rem] py-[0.1rem] text-[0.7rem] uppercase tracking-[0.04em]",
-                      activeWorkspaceNode.syncState === "pending" &&
-                        "text-[color-mix(in_srgb,var(--stroke-accent)_60%,var(--content-primary))]",
-                      activeWorkspaceNode.syncState === "error" && "text-status-error",
-                    )}
-                  >
-                    {activeWorkspaceNode.syncState}
-                  </span>
-                </div>
-              </div>
-              {activeWorkspaceNode.supportsCommit ? (
-                <div className="mt-[0.68rem] grid gap-[0.48rem]">
-                  <p className="m-0 text-[0.78rem] text-content-muted">
-                    {activeWorkspaceNode.storageKind === "github"
-                      ? "GitHub backend"
-                      : "Git storage"}{" "}
-                    · {activeWorkspaceNode.pendingGitChanges} pending
-                  </p>
-                  <InlineMonacoInput
-                    className="[--inline-input-bg:var(--surface-tertiary)]"
-                    value={commitMessage}
-                    onChange={setCommitMessage}
-                    placeholder="Commit message (optional)"
-                    theme={monacoTheme}
-                    beforeMount={registerMonacoThemes}
-                    ariaLabel="Git commit message"
-                  />
-                  <Button
-                    variant="accent"
-                    className="w-full"
-                    onClick={() => void onCommitWorkspaceChanges()}
-                  >
-                    {activeWorkspaceNode.storageKind === "github"
-                      ? "Commit to GitHub"
-                      : "Commit Changes"}
-                  </Button>
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <p className={mutedTextClass}>No workspaces yet.</p>
-          )}
-        </div>
-
-        <section className={sidebarPanelClass}>
-          <h2 className="mb-[0.56rem] mt-0 text-[0.9rem]">Create Collection</h2>
-          <div className="grid gap-[0.5rem]">
-            <input
-              className="rounded-control border border-stroke-default bg-surface-tertiary px-[0.58rem] py-[0.45rem] text-content-primary disabled:cursor-not-allowed disabled:opacity-60"
-              value={newCollectionPath}
-              onChange={(event) => setNewCollectionPath(event.target.value)}
-              placeholder="api/users"
-              aria-label="Collection path"
-              disabled={!activeWorkspaceNode}
-            />
-            <Button
-              variant="accent"
-              className="mt-0 w-full"
-              onClick={() => void onCreateCollection()}
-              disabled={!activeWorkspaceNode}
-            >
-              Create Collection
-            </Button>
-          </div>
-        </section>
-
-        <section className={sidebarPanelClass}>
-          <h2 className="mb-[0.7rem] mt-0 text-[0.9rem]">Settings</h2>
-          <div className={controlGridClass}>
-            <p className="m-0">Environment</p>
-            <InlineMonacoInput
-              className="[--inline-input-bg:var(--surface-tertiary)]"
-              value={envName}
-              onChange={setEnvName}
-              placeholder="default"
-              theme={monacoTheme}
-              beforeMount={registerMonacoThemes}
-              ariaLabel="Environment"
-            />
-          </div>
-          <label className={cn(controlGridClass, "mb-[0.6rem]")}>
-            Theme
-            <select
-              className="rounded-control border border-stroke-default bg-surface-tertiary px-[0.58rem] py-[0.42rem] text-content-primary"
-              value={themeName}
-              onChange={(event) => {
-                setThemeName(event.target.value as ThemeName);
-                setSelectedAccentToken("accent-1");
-              }}
-            >
-              <option value="black">Black</option>
-              <option value="light">Light</option>
-              <option value="soft">Soft</option>
-              <option value="gruvbox">Gruvbox</option>
-            </select>
-          </label>
-          <label className="inline-flex items-center gap-[0.45rem] text-[0.85rem] text-content-muted">
-            <input
-              className="m-0 h-[16px] w-[16px] accent-stroke-accent"
-              type="checkbox"
-              checked={syncParamsWithUrl}
-              onChange={(event) => onSyncParamsWithUrlChange(event.target.checked)}
-            />
-            Sync params with URL
-          </label>
-        </section>
-
-        <div className="grid gap-[0.42rem]">
-          {activeWorkspaceNode ? (
-            collectionTree.length > 0 ? (
-              collectionTree.map((branch) =>
-                renderCollectionBranch(branch, activeWorkspaceNode.workspace),
-              )
-            ) : (
-              <p className="my-[0.28rem] text-[0.82rem] text-content-muted">No collections yet.</p>
-            )
-          ) : (
-            <p className="my-[0.28rem] text-[0.82rem] text-content-muted">
-              Create a workspace to start.
-            </p>
-          )}
-        </div>
-      </aside>
-
-      <main className="grid min-h-screen grid-rows-[auto_1fr_1fr] gap-[0.78rem] p-[0.9rem] max-[1080px]:grid-rows-[auto_auto_auto]">
-        <header className="grid grid-cols-[112px_1fr_94px_94px] items-center gap-[0.6rem] max-[1080px]:grid-cols-2">
-          <select
-            className={controlSurfaceClass}
-            value={method}
-            onChange={(event) => setMethod(event.target.value as (typeof HTTP_METHODS)[number])}
-          >
-            {HTTP_METHODS.map((entry) => (
-              <option key={entry} value={entry}>
-                {entry}
-              </option>
-            ))}
-          </select>
-
-          <InlineMonacoInput
-            className="font-mono max-[1080px]:col-span-2"
-            value={displayedUrl}
-            onChange={onUrlInputChange}
-            placeholder="https://api.example.com/v1/resource"
-            theme={monacoTheme}
-            beforeMount={registerMonacoThemes}
-            ariaLabel="Request URL"
-          />
-
-          <Button variant="primary" className="font-semibold" onClick={() => void onRunRequest()}>
-            Send
-          </Button>
-          <Button variant="accent" className="font-semibold" onClick={() => void onSaveRequest()}>
-            Save
-          </Button>
-        </header>
-
-        <section className={panelShellClass}>
-          <nav className="flex gap-[0.45rem] border-b border-stroke-default p-[0.7rem]">
-            <Button
-              variant="tab"
-              size="compact"
-              className={panelTab === "params" ? tabButtonActiveClass : undefined}
-              onClick={() => setPanelTab("params")}
-            >
-              Params
-            </Button>
-            <Button
-              variant="tab"
-              size="compact"
-              className={panelTab === "headers" ? tabButtonActiveClass : undefined}
-              onClick={() => setPanelTab("headers")}
-            >
-              Headers
-            </Button>
-            <Button
-              variant="tab"
-              size="compact"
-              className={panelTab === "auth" ? tabButtonActiveClass : undefined}
-              onClick={() => setPanelTab("auth")}
-            >
-              Auth
-            </Button>
-            <Button
-              variant="tab"
-              size="compact"
-              className={panelTab === "body" ? tabButtonActiveClass : undefined}
-              onClick={() => setPanelTab("body")}
-            >
-              Body
-            </Button>
-          </nav>
-
-          {panelTab === "params" ? (
-            <div className={kvGridClass}>
-              <div className={kvHeadClass}>Key</div>
-              <div className={kvHeadClass}>Value</div>
-              <div className={kvHeadClass}>Enabled</div>
-              <div />
-
-              {queryRows.map((row) => (
-                <div className="contents" key={row.id}>
-                  <InlineMonacoInput
-                    value={row.key}
-                    onChange={(nextValue) =>
-                      setQueryRows((current) =>
-                        updateRow(current, row.id, (target) => ({
-                          ...target,
-                          key: nextValue,
-                        })),
-                      )
-                    }
-                    placeholder="limit"
-                    theme={monacoTheme}
-                    beforeMount={registerMonacoThemes}
-                    ariaLabel="Query parameter key"
-                  />
-                  <InlineMonacoInput
-                    value={row.value}
-                    onChange={(nextValue) =>
-                      setQueryRows((current) =>
-                        updateRow(current, row.id, (target) => ({
-                          ...target,
-                          value: nextValue,
-                        })),
-                      )
-                    }
-                    placeholder="10"
-                    theme={monacoTheme}
-                    beforeMount={registerMonacoThemes}
-                    ariaLabel="Query parameter value"
-                  />
-                  <input
-                    className="mx-auto h-[18px] w-[18px] accent-stroke-accent"
-                    type="checkbox"
-                    checked={row.enabled}
-                    onChange={(event) =>
-                      setQueryRows((current) =>
-                        updateRow(current, row.id, (target) => ({
-                          ...target,
-                          enabled: event.target.checked,
-                        })),
-                      )
-                    }
-                  />
-                  <Button
-                    variant="danger"
-                    onClick={() =>
-                      setQueryRows((current) => current.filter((entry) => entry.id !== row.id))
-                    }
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
-
-              <Button
-                variant="secondary"
-                className={addRowClass}
-                onClick={() => setQueryRows((current) => [...current, createRow()])}
-              >
-                Add Param
-              </Button>
-            </div>
-          ) : null}
-
-          {panelTab === "headers" ? (
-            <div className={kvGridClass}>
-              <div className={kvHeadClass}>Key</div>
-              <div className={kvHeadClass}>Value</div>
-              <div className={kvHeadClass}>Enabled</div>
-              <div />
-
-              {headerRows.map((row) => (
-                <div className="contents" key={row.id}>
-                  <InlineMonacoInput
-                    value={row.key}
-                    onChange={(nextValue) =>
-                      setHeaderRows((current) =>
-                        updateRow(current, row.id, (target) => ({
-                          ...target,
-                          key: nextValue,
-                        })),
-                      )
-                    }
-                    placeholder="Content-Type"
-                    theme={monacoTheme}
-                    beforeMount={registerMonacoThemes}
-                    ariaLabel="Header key"
-                  />
-                  <InlineMonacoInput
-                    value={row.value}
-                    onChange={(nextValue) =>
-                      setHeaderRows((current) =>
-                        updateRow(current, row.id, (target) => ({
-                          ...target,
-                          value: nextValue,
-                        })),
-                      )
-                    }
-                    placeholder="application/json"
-                    theme={monacoTheme}
-                    beforeMount={registerMonacoThemes}
-                    ariaLabel="Header value"
-                  />
-                  <input
-                    className="mx-auto h-[18px] w-[18px] accent-stroke-accent"
-                    type="checkbox"
-                    checked={row.enabled}
-                    onChange={(event) =>
-                      setHeaderRows((current) =>
-                        updateRow(current, row.id, (target) => ({
-                          ...target,
-                          enabled: event.target.checked,
-                        })),
-                      )
-                    }
-                  />
-                  <Button
-                    variant="danger"
-                    onClick={() =>
-                      setHeaderRows((current) => current.filter((entry) => entry.id !== row.id))
-                    }
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
-
-              <Button
-                variant="secondary"
-                className={addRowClass}
-                onClick={() => setHeaderRows((current) => [...current, createRow()])}
-              >
-                Add Header
-              </Button>
-            </div>
-          ) : null}
-
-          {panelTab === "auth" ? (
-            <div className="p-[0.72rem]">
-              <div className={controlGridClass}>
-                <p className="m-0">Bearer Token</p>
-                <InlineMonacoInput
-                  className="[--inline-input-bg:var(--surface-tertiary)]"
-                  value={bearerToken}
-                  onChange={setBearerToken}
-                  placeholder="Paste JWT or access token"
-                  theme={monacoTheme}
-                  beforeMount={registerMonacoThemes}
-                  ariaLabel="Bearer token"
-                />
-              </div>
-            </div>
-          ) : null}
-
-          {panelTab === "body" ? (
-            <div className="p-[0.72rem]">
-              <div className="mb-[0.66rem] flex items-center gap-[0.85rem]">
-                <label className="inline-flex items-center gap-[0.35rem] text-content-muted">
-                  <input
-                    className="accent-stroke-accent"
-                    type="radio"
-                    checked={bodyMode === "editor"}
-                    onChange={() => setBodyMode("editor")}
-                  />
-                  Monaco Editor
-                </label>
-                <label className="inline-flex items-center gap-[0.35rem] text-content-muted">
-                  <input
-                    className="accent-stroke-accent"
-                    type="radio"
-                    checked={bodyMode === "file"}
-                    onChange={() => setBodyMode("file")}
-                  />
-                  File Upload
-                </label>
-
-                <select
-                  className={controlSurfaceClass}
-                  value={payloadLanguage}
-                  onChange={(event) => setPayloadLanguage(event.target.value as PayloadLanguage)}
-                  disabled={bodyMode !== "editor"}
-                >
-                  <option value="json">JSON</option>
-                  <option value="graphql">GraphQL</option>
-                </select>
-              </div>
-
-              {bodyMode === "editor" ? (
-                <div className={editorBoxClass}>
-                  <Editor
-                    height="360px"
-                    theme={monacoTheme}
-                    beforeMount={registerMonacoThemes}
-                    language={payloadLanguage}
-                    value={editorBody}
-                    onChange={(value) => setEditorBody(value ?? "")}
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      tabSize: 2,
-                      automaticLayout: true,
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="rounded-[10px] border border-stroke-default bg-surface-tertiary p-[0.8rem]">
-                  <input
-                    className={controlSurfaceClass}
-                    type="file"
-                    onChange={(event) => void onBodyFileSelect(event)}
-                  />
-                  <p className="mb-0 mt-[0.55rem] text-[0.86rem] text-content-muted">
-                    {fileName ? `Attached: ${fileName}` : "No file attached"}
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : null}
-        </section>
-
-        <section className={panelShellClass}>
-          <div className="flex items-center justify-between border-b border-stroke-default">
-            <nav className="flex gap-[0.45rem] p-[0.55rem_0.7rem]">
-              <Button
-                variant="tab"
-                size="compact"
-                className={responseTab === "request" ? tabButtonActiveClass : undefined}
-                onClick={() => setResponseTab("request")}
-              >
-                Request
-              </Button>
-              <Button
-                variant="tab"
-                size="compact"
-                className={responseTab === "response" ? tabButtonActiveClass : undefined}
-                onClick={() => setResponseTab("response")}
-              >
-                Response
-              </Button>
-            </nav>
-            <p className="m-0 pr-[0.8rem] font-semibold text-content-muted">{statusText}</p>
-          </div>
-
-          {responseTab === "request" ? (
-            <pre className="m-0 h-[calc(100%-49px)] overflow-auto whitespace-pre-wrap break-words p-[0.8rem] font-mono text-[0.86rem]">
-              {requestPreview}
-            </pre>
-          ) : (
-            <pre className="m-0 h-[calc(100%-49px)] overflow-auto whitespace-pre-wrap break-words p-[0.8rem] font-mono text-[0.86rem]">
-              {responseText}
-            </pre>
-          )}
-        </section>
-      </main>
+      <ToastStack toasts={toasts} />
+      <WorkspaceRail
+        workspaceTree={workspaceTree}
+        activeWorkspaceId={activeWorkspaceNode?.workspace.id ?? null}
+        onCreateWorkspace={() => void onCreateWorkspace()}
+        onSelectWorkspace={setActiveWorkspaceId}
+      />
+      <WorkspaceSidebarView
+        activeWorkspaceNode={activeWorkspaceNode}
+        collectionTree={collectionTree}
+        selection={selection}
+        activeCollectionIconEditor={activeCollectionIconEditor}
+        selectedIconId={selectedIconId}
+        selectedAccentToken={selectedAccentToken}
+        accentPalette={accentPalette}
+        commitMessage={commitMessage}
+        newCollectionPath={newCollectionPath}
+        envName={envName}
+        themeName={themeName}
+        syncParamsWithUrl={syncParamsWithUrl}
+        monacoTheme={monacoTheme}
+        beforeMountMonaco={registerMonacoThemes}
+        onCreateWorkspace={() => void onCreateWorkspace()}
+        onImportGitHubWorkspaces={() => void onImportGitHubWorkspaces()}
+        onCommitWorkspaceChanges={() => void onCommitWorkspaceChanges()}
+        onCreateCollection={() => void onCreateCollection()}
+        onSelectRequest={(nextSelection) => void onSelectRequest(nextSelection)}
+        onNewCollectionPathChange={setNewCollectionPath}
+        onCommitMessageChange={setCommitMessage}
+        onEnvNameChange={setEnvName}
+        onThemeChange={onThemeChange}
+        onSyncParamsWithUrlChange={onSyncParamsWithUrlChange}
+        onToggleCollectionIconEditor={(collectionId) =>
+          setActiveCollectionIconEditor((current) =>
+            current === collectionId ? null : collectionId,
+          )
+        }
+        onSelectIconId={setSelectedIconId}
+        onSelectAccentToken={setSelectedAccentToken}
+        onApplyCollectionIcon={(collectionId) => void onApplyCollectionIcon(collectionId)}
+      />
+      <RequestWorkbenchView
+        monacoTheme={monacoTheme}
+        beforeMountMonaco={registerMonacoThemes}
+        method={method}
+        displayedUrl={displayedUrl}
+        panelTab={panelTab}
+        responseTab={responseTab}
+        queryRows={queryRows}
+        headerRows={headerRows}
+        bearerToken={bearerToken}
+        bodyMode={bodyMode}
+        payloadLanguage={payloadLanguage}
+        editorBody={editorBody}
+        fileName={fileName}
+        statusText={statusText}
+        requestPreview={requestPreview}
+        responseText={responseText}
+        onMethodChange={setMethod}
+        onUrlChange={onUrlInputChange}
+        onRunRequest={() => void onRunRequest()}
+        onSaveRequest={() => void onSaveRequest()}
+        onPanelTabChange={setPanelTab}
+        onResponseTabChange={setResponseTab}
+        onQueryRowChange={updateQueryRowValue}
+        onHeaderRowChange={updateHeaderRowValue}
+        onAddQueryRow={() => setQueryRows((current) => [...current, createRow()])}
+        onAddHeaderRow={() => setHeaderRows((current) => [...current, createRow()])}
+        onRemoveQueryRow={(rowId) =>
+          setQueryRows((current) => current.filter((entry) => entry.id !== rowId))
+        }
+        onRemoveHeaderRow={(rowId) =>
+          setHeaderRows((current) => current.filter((entry) => entry.id !== rowId))
+        }
+        onBearerTokenChange={setBearerToken}
+        onBodyModeChange={setBodyMode}
+        onPayloadLanguageChange={setPayloadLanguage}
+        onEditorBodyChange={setEditorBody}
+        onBodyFileSelect={(event) => void onBodyFileSelect(event)}
+      />
     </div>
   );
 }
