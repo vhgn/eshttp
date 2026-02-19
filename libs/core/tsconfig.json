@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": ".",
+    "noEmit": false,
+    "outDir": ".tsbuild",
+    "types": ["bun"]
+  },
+  "include": ["src", "test"]
+}
