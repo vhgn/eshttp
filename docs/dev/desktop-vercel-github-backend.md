@@ -22,14 +22,14 @@ Scope:
 ## Environment contract
 
 Required vars in `apps/desktop/.env.example`:
-- `APP_ORIGIN`
 - `DATABASE_URL` (Neon)
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
-- `GITHUB_REDIRECT_URI`
 - `SESSION_ENCRYPTION_KEY` (base64url 32-byte key)
 
 Optional:
+- `APP_ORIGIN` (inferred from `VERCEL_PROJECT_PRODUCTION_URL`/`VERCEL_BRANCH_URL`/`VERCEL_URL` when omitted)
+- `GITHUB_REDIRECT_URI` (defaults to `${APP_ORIGIN}/api/auth/github/callback`)
 - `SESSION_COOKIE_NAME`
 - `SESSION_TTL_SECONDS`
 - `OAUTH_STATE_TTL_SECONDS`
@@ -85,5 +85,6 @@ Desktop commit path:
 
 Coverage added in `apps/desktop/test/`:
 - `api.db.test.ts`: Neon SQL contract tested through `pg-mem` `newDb()`
+- `api.config.test.ts`: `APP_ORIGIN` and `GITHUB_REDIRECT_URI` env inference/override behavior
 - `api.validation.test.ts`: redirect + commit payload hardening checks
 - `collectionsRepository.github.test.ts`: import/commit flow through backend stubs
