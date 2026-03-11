@@ -2,8 +2,31 @@ import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
 
+const siteName = "eshttp";
+const siteTitle = "eshttp | Free Open-Source HTTP Client for .http Workflows";
+const siteDescription =
+	"eshttp is a free, open-source HTTP client for plain-text .http files, layered environment variables, git-friendly API workflows, and fast CLI or desktop execution.";
 const siteUrl = "https://eshttp.com";
+const canonicalUrl = `${siteUrl}/`;
 const socialImageUrl = `${siteUrl}/social-preview.png`;
+const launchUrl = "https://app.eshttp.com";
+const githubUrl = "https://github.com/vhgn/eshttp";
+const softwareApplicationJsonLd = JSON.stringify({
+	"@context": "https://schema.org",
+	"@type": "SoftwareApplication",
+	name: siteName,
+	applicationCategory: "DeveloperApplication",
+	description: siteDescription,
+	image: socialImageUrl,
+	isAccessibleForFree: true,
+	offers: {
+		"@type": "Offer",
+		price: "0",
+		priceCurrency: "USD",
+	},
+	sameAs: [githubUrl, launchUrl],
+	url: canonicalUrl,
+});
 
 export const Route = createRootRoute({
 	head: () => ({
@@ -16,12 +39,19 @@ export const Route = createRootRoute({
 				content: "width=device-width, initial-scale=1",
 			},
 			{
-				title: "eshttp | HTTP Workflows In Plain Text",
+				title: siteTitle,
 			},
 			{
 				name: "description",
-				content:
-					"eshttp is a fast HTTP workflow tool built around plain-text requests, environment layering, and git-friendly workspaces.",
+				content: siteDescription,
+			},
+			{
+				name: "robots",
+				content: "index,follow,max-image-preview:large",
+			},
+			{
+				name: "application-name",
+				content: siteName,
 			},
 			{
 				name: "theme-color",
@@ -33,20 +63,32 @@ export const Route = createRootRoute({
 			},
 			{
 				property: "og:url",
-				content: siteUrl,
+				content: canonicalUrl,
+			},
+			{
+				property: "og:site_name",
+				content: siteName,
+			},
+			{
+				property: "og:locale",
+				content: "en_US",
 			},
 			{
 				property: "og:title",
-				content: "eshttp | HTTP Workflows In Plain Text",
+				content: siteTitle,
 			},
 			{
 				property: "og:description",
-				content:
-					"eshttp is a fast HTTP workflow tool built around plain-text requests, environment layering, and git-friendly workspaces.",
+				content: siteDescription,
 			},
 			{
 				property: "og:image",
 				content: socialImageUrl,
+			},
+			{
+				property: "og:image:alt",
+				content:
+					"eshttp landing page preview for a free and open-source HTTP client",
 			},
 			{
 				property: "og:image:width",
@@ -62,16 +104,20 @@ export const Route = createRootRoute({
 			},
 			{
 				name: "twitter:title",
-				content: "eshttp | HTTP Workflows In Plain Text",
+				content: siteTitle,
 			},
 			{
 				name: "twitter:description",
-				content:
-					"eshttp is a fast HTTP workflow tool built around plain-text requests, environment layering, and git-friendly workspaces.",
+				content: siteDescription,
 			},
 			{
 				name: "twitter:image",
 				content: socialImageUrl,
+			},
+			{
+				name: "twitter:image:alt",
+				content:
+					"eshttp landing page preview for a free and open-source HTTP client",
 			},
 		],
 		links: [
@@ -80,8 +126,20 @@ export const Route = createRootRoute({
 				href: appCss,
 			},
 			{
+				rel: "canonical",
+				href: canonicalUrl,
+			},
+			{
 				rel: "icon",
 				href: "/favicon.ico",
+			},
+			{
+				rel: "apple-touch-icon",
+				href: "/logo192.png",
+			},
+			{
+				rel: "manifest",
+				href: "/manifest.json",
 			},
 		],
 	}),
@@ -93,6 +151,10 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		<html lang="en">
 			<head>
 				<HeadContent />
+				<script
+					type="application/ld+json"
+					dangerouslySetInnerHTML={{ __html: softwareApplicationJsonLd }}
+				/>
 			</head>
 			<body className="landing-body font-sans antialiased [overflow-wrap:anywhere]">
 				{children}

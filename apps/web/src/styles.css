@@ -1,8 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Avenir Next", "Segoe UI Variable Display", "Helvetica Neue", sans-serif;
 }
 
 :root {
@@ -14,8 +13,8 @@
   --line: rgba(97, 142, 173, 0.18);
   --line-strong: rgba(92, 183, 233, 0.28);
   --text: #333338;
-  --text-soft: rgba(51, 51, 56, 0.7);
-  --muted: rgba(87, 104, 120, 0.72);
+  --text-soft: rgba(39, 39, 44, 0.82);
+  --muted: rgba(61, 74, 87, 0.84);
   --accent: #67c1ee;
   --accent-strong: #8dd5f7;
   --accent-green: #a9de7a;
@@ -25,7 +24,7 @@
   --code-surface: linear-gradient(145deg, rgba(238, 246, 252, 0.98), rgba(248, 250, 246, 0.92));
   --code-line: rgba(120, 190, 225, 0.2);
   --code-text: #3a4953;
-  --code-muted: #7f8d9b;
+  --code-muted: #5f6d7b;
   --code-method: #2f8ec4;
   --code-header: #4f7f65;
   --code-string: #5ea3cf;
@@ -86,6 +85,24 @@ body::after {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  z-index: 50;
+  transform: translateY(-140%);
+  border-radius: 999px;
+  background: #21323b;
+  color: #fff;
+  padding: 0.8rem 1rem;
+  font-weight: 700;
+  transition: transform 180ms ease;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
 }
 
 code {
@@ -170,7 +187,18 @@ pre code {
   color: var(--text);
 }
 
+.nav-link:focus-visible,
+.footer-shell a:focus-visible {
+  color: var(--text);
+  outline: 3px solid rgba(33, 50, 59, 0.16);
+  outline-offset: 0.2rem;
+}
+
 .nav-link:hover::after {
+  transform: scaleX(1);
+}
+
+.nav-link:focus-visible::after {
   transform: scaleX(1);
 }
 
@@ -203,6 +231,13 @@ pre code {
 .workflow-panel:hover,
 .stat-card:hover {
   transform: translateY(-2px);
+}
+
+.button-link:focus-visible,
+.install-tab:focus-visible,
+.install-copy:focus-visible {
+  outline: 3px solid rgba(33, 50, 59, 0.16);
+  outline-offset: 0.2rem;
 }
 
 .button-link-primary {
@@ -786,6 +821,30 @@ pre code {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .button-link:hover,
+  .feature-card:hover,
+  .workflow-panel:hover,
+  .stat-card:hover,
+  .install-tab:hover,
+  .install-copy:hover {
+    transform: none;
+  }
+
+  .rise-in {
+    animation: none;
   }
 }
 
