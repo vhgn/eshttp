@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 
 const featureCards = [
 	{
@@ -42,18 +43,22 @@ const installCommands = [
 	{
 		label: "npm",
 		command: "npm install -g @eshttp/cli",
+		tokens: ["npm", "install", "-g", "@eshttp/cli"],
 	},
 	{
 		label: "pnpm",
 		command: "pnpm add -g @eshttp/cli",
+		tokens: ["pnpm", "add", "-g", "@eshttp/cli"],
 	},
 	{
 		label: "yarn",
 		command: "yarn global add @eshttp/cli",
+		tokens: ["yarn", "global", "add", "@eshttp/cli"],
 	},
 	{
 		label: "bun",
 		command: "bun add -g @eshttp/cli",
+		tokens: ["bun", "add", "-g", "@eshttp/cli"],
 	},
 ];
 
@@ -104,7 +109,69 @@ function RequestCodeSample() {
 	);
 }
 
+function WorkspaceSnippetSample() {
+	return (
+		<>
+			<div className="code-token code-file">.env.default</div>
+			<div>
+				<span className="code-token code-env-key">API_HOST</span>
+				<span className="code-token code-punctuation">=</span>
+				<span className="code-token code-env-value">api.eshttp.dev</span>
+			</div>
+			<div>
+				<span className="code-token code-env-key">TOKEN</span>
+				<span className="code-token code-punctuation">=</span>
+				<span className="code-token code-env-value">replace-me</span>
+			</div>
+			<div>
+				<span className="code-token code-env-key">CURSOR</span>
+				<span className="code-token code-punctuation">=</span>
+			</div>
+			<div>&nbsp;</div>
+			<div className="code-token code-file">users.http</div>
+			<div>
+				<span className="code-token code-method">GET</span>{" "}
+				<span className="code-token code-url">https://</span>
+				<span className="code-token code-placeholder">{"{{API_HOST}}"}</span>
+				<span className="code-token code-url">/users</span>
+			</div>
+			<div>
+				<span className="code-token code-header">Authorization</span>
+				<span className="code-token code-punctuation">:</span>{" "}
+				<span className="code-token code-value">Bearer </span>
+				<span className="code-token code-placeholder">{"{{TOKEN}}"}</span>
+			</div>
+		</>
+	);
+}
+
+function InstallCommandSample({ tokens }: { tokens: string[] }) {
+	return (
+		<>
+			{tokens.map((token, index) => {
+				const className =
+					token === "@eshttp/cli"
+						? "code-token code-cli-package"
+						: token.startsWith("-")
+							? "code-token code-cli-flag"
+							: index === 0
+								? "code-token code-cli-bin"
+								: "code-token code-cli-subcommand";
+
+				return (
+					<span key={token}>
+						{index > 0 ? " " : null}
+						<span className={className}>{token}</span>
+					</span>
+				);
+			})}
+		</>
+	);
+}
+
 function LandingPage() {
+	const [selectedInstaller, setSelectedInstaller] = useState("npm");
+
 	const copyCommand = async (command: string) => {
 		try {
 			await navigator.clipboard.writeText(command);
@@ -112,6 +179,10 @@ function LandingPage() {
 			// Ignore clipboard failures and leave the text selectable.
 		}
 	};
+
+	const activeInstallCommand =
+		installCommands.find((entry) => entry.label === selectedInstaller) ??
+		installCommands[0];
 
 	return (
 		<main>
@@ -333,14 +404,9 @@ function LandingPage() {
 								workspace/.eshttp/workspaces/demo/users
 							</div>
 							<pre className="code-block compact">
-								<code>{`.env.default
-API_HOST=api.eshttp.dev
-TOKEN=replace-me
-CURSOR=
-
-users.http
-GET https://{{API_HOST}}/users
-Authorization: Bearer {{TOKEN}}`}</code>
+								<code>
+									<WorkspaceSnippetSample />
+								</code>
 							</pre>
 						</div>
 
@@ -355,23 +421,36 @@ Authorization: Bearer {{TOKEN}}`}</code>
 
 						<div className="snippet-note">
 							<p className="snippet-note-title">Install globally</p>
-							<div className="install-grid mt-4">
+							<div
+								className="install-tabs mt-4"
+								role="tablist"
+								aria-label="Install options"
+							>
 								{installCommands.map((entry) => (
-									<div key={entry.label} className="install-card">
-										<p className="install-label">{entry.label}</p>
-										<div className="install-command-row">
-											<code className="install-command">{entry.command}</code>
-											<button
-												className="install-copy"
-												type="button"
-												onClick={() => void copyCommand(entry.command)}
-												aria-label={`Copy ${entry.label} install command`}
-											>
-												Copy
-											</button>
-										</div>
-									</div>
+									<button
+										key={entry.label}
+										className={`install-tab${entry.label === activeInstallCommand.label ? " is-active" : ""}`}
+										type="button"
+										role="tab"
+										aria-selected={entry.label === activeInstallCommand.label}
+										onClick={() => setSelectedInstaller(entry.label)}
+									>
+										{entry.label}
+									</button>
 								))}
+							</div>
+							<div className="install-command-row mt-4">
+								<code className="install-command">
+									<InstallCommandSample tokens={activeInstallCommand.tokens} />
+								</code>
+								<button
+									className="install-copy"
+									type="button"
+									onClick={() => void copyCommand(activeInstallCommand.command)}
+									aria-label={`Copy ${activeInstallCommand.label} install command`}
+								>
+									Copy
+								</button>
 							</div>
 						</div>
 					</div>
@@ -393,9 +472,9 @@ Authorization: Bearer {{TOKEN}}`}</code>
 				</section>
 
 				<footer className="footer-shell mt-12 pb-10 pt-8 text-sm text-[var(--text-soft)]">
-					<span>eshttp</span>
+					<a href={launchUrl}>Open App</a>
 					<span className="footer-separator" />
-					<span>TanStack Start static landing</span>
+					<a href="#install">Install CLI</a>
 					<span className="footer-separator" />
 					<a href={githubUrl} target="_blank" rel="noreferrer">
 						GitHub

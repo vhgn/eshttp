@@ -32,6 +32,9 @@
   --code-placeholder: #8ebd55;
   --code-number: #d29e4e;
   --code-punctuation: #7c8b97;
+  --code-file: #6c7f90;
+  --code-env-key: #3e8fbb;
+  --code-env-value: #4f7f65;
 }
 
 * {
@@ -102,7 +105,7 @@ pre code {
 }
 
 .page-wrap {
-  width: min(1240px, calc(100% - 2rem));
+  width: min(1240px, 100%);
   margin-inline: auto;
 }
 
@@ -334,6 +337,11 @@ pre code {
   align-items: center;
 }
 
+.response-header {
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
 .panel-dot {
   display: inline-block;
   height: 0.72rem;
@@ -406,6 +414,40 @@ pre code {
 .code-number {
   color: var(--code-number);
   font-weight: 700;
+}
+
+.code-file {
+  color: var(--code-file);
+  font-weight: 700;
+}
+
+.code-cli-bin {
+  color: var(--code-method);
+  font-weight: 800;
+}
+
+.code-cli-subcommand {
+  color: var(--code-header);
+  font-weight: 700;
+}
+
+.code-cli-flag {
+  color: var(--code-number);
+  font-weight: 700;
+}
+
+.code-cli-package {
+  color: var(--code-placeholder);
+  font-weight: 800;
+}
+
+.code-env-key {
+  color: var(--code-env-key);
+  font-weight: 700;
+}
+
+.code-env-value {
+  color: var(--code-env-value);
 }
 
 .code-punctuation,
@@ -560,35 +602,67 @@ pre code {
   padding: 1.2rem;
 }
 
-.install-grid {
-  display: grid;
-  gap: 0.75rem;
+.install-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
 }
 
-.install-label {
-  margin-bottom: 0.45rem;
+.install-tab {
+  border: 1px solid rgba(103, 193, 238, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--muted);
+  padding: 0.68rem 1rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.install-tab:hover {
+  transform: translateY(-1px);
+  color: var(--text);
+}
+
+.install-tab.is-active {
+  border-color: rgba(103, 193, 238, 0.24);
+  background: linear-gradient(
+    135deg,
+    rgba(169, 222, 122, 0.42),
+    rgba(103, 193, 238, 0.38)
+  );
+  color: #22343d;
 }
 
 .install-command-row {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  border-radius: 1rem;
+  border-radius: 1.15rem;
   border: 1px solid rgba(103, 193, 238, 0.18);
-  background: rgba(255, 255, 255, 0.72);
-  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.58);
+  padding: 0.65rem;
 }
 
 .install-command {
   display: block;
   min-width: 0;
   flex: 1;
-  overflow-x: auto;
-  white-space: nowrap;
-  border-radius: 1rem;
-  padding: 0.35rem 0.45rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  padding: 0.2rem 0.1rem;
   line-height: 1.6;
-  scrollbar-width: thin;
+  background: transparent;
+  border: 0;
 }
 
 .install-copy {
@@ -597,7 +671,7 @@ pre code {
   border-radius: 999px;
   background: linear-gradient(135deg, rgba(169, 222, 122, 0.6), rgba(103, 193, 238, 0.62));
   color: #22343d;
-  padding: 0.55rem 0.85rem;
+  padding: 0.7rem 1rem;
   font: inherit;
   font-size: 0.84rem;
   font-weight: 700;
@@ -730,8 +804,7 @@ pre code {
 }
 
 @media (min-width: 720px) {
-  .response-grid,
-  .install-grid {
+  .response-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
