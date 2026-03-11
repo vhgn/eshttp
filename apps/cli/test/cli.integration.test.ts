@@ -31,14 +31,14 @@ describe("CLI integration", () => {
     const collectionDir = join(workspaceRoot, "users");
 
     await mkdir(collectionDir, { recursive: true });
-    await writeFile(join(collectionDir, "List users.http"), "GET https://example.com/users");
+    await writeFile(join(collectionDir, "list.http"), "GET https://example.com/users");
 
     const source = new LocalFsCollectionSource(sandboxDir);
     await runCli(["list"], { cwd: sandboxDir, source });
 
     expect(logs.some((line) => line.includes("workspace team-api"))).toBeTrue();
     expect(logs.some((line) => line.includes("collection users"))).toBeTrue();
-    expect(logs.some((line) => line.includes("List users"))).toBeTrue();
+    expect(logs.some((line) => line.includes("list"))).toBeTrue();
   });
 
   test("run resolves env placeholders with collection overriding workspace", async () => {

@@ -2,8 +2,10 @@
 
 This repo has two root desktop development entrypoints:
 
-- `bun dev:web` runs the desktop frontend in browser mode (Vite dev server).
+- `bun dev:desktop:web` runs the desktop frontend in browser mode (Vite dev server).
 - `bun dev:app` runs the Tauri desktop app in development mode.
+
+The root `bun dev:web` command is reserved for the TanStack Start landing app in `apps/web`. Do not point desktop docs or tooling back at `dev:web`.
 
 ## Why `beforeDevCommand` uses workspace filters
 

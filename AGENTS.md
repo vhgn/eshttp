@@ -9,6 +9,7 @@ Read these docs before editing matching areas:
 - `docs/dev/desktop-storage-options.md`: desktop storage strategy interfaces, save checks, and Tauri git commit flow.
 - `docs/dev/desktop-tailwind-primitives.md`: Tailwind v4 setup, semantic primitive tokens, and desktop styling rules.
 - `docs/dev/desktop-vercel-github-backend.md`: Vercel API endpoints, GitHub OAuth/session model, backend commit flow, and security validation rules.
+- `docs/dev/web-landing-app.md`: TanStack Start landing app commands, static prerender config, and Vercel output expectations.
 
 Required behavior for future agents:
 - Validate docs against code before relying on them. If code and docs disagree, update docs in the same task.

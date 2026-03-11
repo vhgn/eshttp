@@ -14,7 +14,9 @@
     "format": "turbo run format",
     "test": "turbo run test",
     "dev:cli": "bun run --filter 'eshttp' dev",
-    "dev:web": "bun run --filter '@eshttp/desktop' dev",
+    "dev:web": "bun run --filter '@eshttp/web' dev",
+    "dev:landing": "bun run --filter '@eshttp/web' dev",
+    "dev:desktop:web": "bun run --filter '@eshttp/desktop' dev",
     "dev:app": "bun run --filter '@eshttp/desktop' tauri:dev"
   },
   "devDependencies": {

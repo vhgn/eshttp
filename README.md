@@ -41,7 +41,7 @@ Create a workspace, a request file, and an environment file:
 
 ```bash
 mkdir -p .eshttp/workspaces/demo/users
-cat > ".eshttp/workspaces/demo/users/List users.http" <<'EOF'
+cat > ".eshttp/workspaces/demo/users/list.http" <<'EOF'
 GET https://{{HOST}}/users
 Authorization: Bearer {{TOKEN}}
 EOF
@@ -61,5 +61,5 @@ bun run --filter @eshttp/cli dev -- list
 Run a request:
 
 ```bash
-bun run --filter @eshttp/cli dev -- run ".eshttp/workspaces/demo/users/List users.http"
+eshttp run ".eshttp/workspaces/demo/users/list.http"
 ```
