@@ -74,7 +74,8 @@ function RequestCodeSample() {
 				<span className="code-token code-method">GET</span>{" "}
 				<span className="code-token code-url">https://</span>
 				<span className="code-token code-placeholder">{"{{API_HOST}}"}</span>
-				<span className="code-token code-url">/users</span>
+				<span className="code-token code-url">/users?limit=25&amp;cursor=</span>
+				<span className="code-token code-placeholder">{"{{CURSOR}}"}</span>
 			</div>
 			<div>
 				<span className="code-token code-header">Authorization</span>
@@ -87,24 +88,6 @@ function RequestCodeSample() {
 				<span className="code-token code-punctuation">:</span>{" "}
 				<span className="code-token code-value">preview</span>
 			</div>
-			<div>&nbsp;</div>
-			<div className="code-token code-punctuation">{"{"}</div>
-			<div>
-				<span className="code-token code-indent"> </span>
-				<span className="code-token code-string">"limit"</span>
-				<span className="code-token code-punctuation">:</span>{" "}
-				<span className="code-token code-number">25</span>
-				<span className="code-token code-punctuation">,</span>
-			</div>
-			<div>
-				<span className="code-token code-indent"> </span>
-				<span className="code-token code-string">"cursor"</span>
-				<span className="code-token code-punctuation">:</span>{" "}
-				<span className="code-token code-string">"</span>
-				<span className="code-token code-placeholder">{"{{CURSOR}}"}</span>
-				<span className="code-token code-string">"</span>
-			</div>
-			<div className="code-token code-punctuation">{"}"}</div>
 		</>
 	);
 }
