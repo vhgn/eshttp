@@ -1,312 +1,34 @@
-import { buildRequest, mergeEnvironment, parseEnvText, parseHttpRequestText } from "@eshttp/core";
-import type Editor from "@monaco-editor/react";
-import type { ChangeEvent, ComponentProps } from "react";
+import { buildRequest, mergeEnvironment, parseEnvText } from "@eshttp/core";
+import type { ChangeEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ToastStack } from "./components/ToastStack";
 import { WorkspaceRail } from "./components/WorkspaceRail";
 import { COLLECTION_ICON_OPTIONS } from "./data/collectionIcons";
 import { createCollectionsRepository, type WorkspaceTreeNode } from "./data/collectionsRepository";
-import { registerInlineLanguage, setInlineCompletionEnvKeys } from "./monaco/inlineLanguage";
+import {
+  addDraftRow,
+  composeRequestText,
+  createDefaultRequestDraft,
+  getDisplayedUrl,
+  parseRequestTextToDraft,
+  removeDraftRow,
+  setDraftSyncParamsWithUrl,
+  updateDraftRow,
+  updateDraftUrl,
+} from "./requestDraft";
+import { setInlineCompletionEnvKeys } from "./monaco/inlineLanguage";
+import { APP_THEME_CONFIG, registerMonacoThemes } from "./themeConfig";
 import { createDesktopTransport } from "./transports";
 import { RequestWorkbenchView } from "./views/RequestWorkbenchView";
 import type {
-  AccentOption,
-  BodyMode,
   CollectionTreeBranch,
-  HttpMethod,
-  KeyValueRow,
   PanelTab,
-  PayloadLanguage,
   ResponseTab,
   Selection,
   ThemeName,
   ToastMessage,
 } from "./views/types";
-import { HTTP_METHODS } from "./views/types";
 import { WorkspaceSidebarView } from "./views/WorkspaceSidebarView";
-
-type Monaco = Parameters<NonNullable<ComponentProps<typeof Editor>["beforeMount"]>>[0];
-const MONACO_THEME_BY_APP_THEME: Record<ThemeName, string> = {
-  black: "eshttp-black",
-  light: "eshttp-light",
-  soft: "eshttp-soft",
-  gruvbox: "eshttp-gruvbox",
-};
-const ACCENTS_BY_THEME: Record<ThemeName, AccentOption[]> = {
-  black: [
-    { token: "accent-1", label: "Primary", value: "#6bcf6a" },
-    { token: "accent-2", label: "Mint", value: "#84d1a0" },
-    { token: "accent-3", label: "Amber", value: "#d79b67" },
-    { token: "accent-4", label: "Sky", value: "#66b3ff" },
-    { token: "accent-5", label: "Rose", value: "#de7f95" },
-  ],
-  light: [
-    { token: "accent-1", label: "Primary", value: "#2d8d37" },
-    { token: "accent-2", label: "Teal", value: "#286e60" },
-    { token: "accent-3", label: "Amber", value: "#a05a2c" },
-    { token: "accent-4", label: "Sky", value: "#2f74c9" },
-    { token: "accent-5", label: "Rose", value: "#b44d6f" },
-  ],
-  soft: [
-    { token: "accent-1", label: "Primary", value: "#8cb66b" },
-    { token: "accent-2", label: "Moss", value: "#b0c6a3" },
-    { token: "accent-3", label: "Sand", value: "#c8a379" },
-    { token: "accent-4", label: "Sky", value: "#7da9d8" },
-    { token: "accent-5", label: "Rose", value: "#cb8ea0" },
-  ],
-  gruvbox: [
-    { token: "accent-1", label: "Primary", value: "#b8bb26" },
-    { token: "accent-2", label: "Green", value: "#8ec07c" },
-    { token: "accent-3", label: "Orange", value: "#d79921" },
-    { token: "accent-4", label: "Blue", value: "#83a598" },
-    { token: "accent-5", label: "Red", value: "#fb4934" },
-  ],
-};
-
-let monacoThemesRegistered = false;
-
-function registerMonacoThemes(monaco: Monaco) {
-  registerInlineLanguage(monaco);
-  if (monacoThemesRegistered) {
-    return;
-  }
-
-  monaco.editor.defineTheme("eshttp-black", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { token: "comment", foreground: "8D8D8D", fontStyle: "italic" },
-      { token: "string", foreground: "A8CF76" },
-      { token: "number", foreground: "D79B67" },
-      { token: "keyword", foreground: "6BCF6A" },
-      { token: "type", foreground: "84D1A0" },
-      { token: "delimiter", foreground: "CCCCCC" },
-      { token: "placeholder.delimiter", foreground: "6BCF6A" },
-      { token: "placeholder.key", foreground: "84D1A0", fontStyle: "bold" },
-    ],
-    colors: {
-      "editor.background": "#121212",
-      "editor.foreground": "#F2F2F2",
-      "editor.lineHighlightBackground": "#181818",
-      "editorCursor.foreground": "#6BCF6A",
-      "editorLineNumber.foreground": "#595959",
-      "editorLineNumber.activeForeground": "#AAAAAA",
-      "editor.selectionBackground": "#254327",
-      "editor.inactiveSelectionBackground": "#1B2D1D",
-      "editorWhitespace.foreground": "#323232",
-      "editorIndentGuide.background1": "#2A2A2A",
-      "editorIndentGuide.activeBackground1": "#414141",
-      "editorGutter.background": "#121212",
-    },
-  });
-
-  monaco.editor.defineTheme("eshttp-light", {
-    base: "vs",
-    inherit: true,
-    rules: [
-      { token: "comment", foreground: "7A7A7A", fontStyle: "italic" },
-      { token: "string", foreground: "3F7D42" },
-      { token: "number", foreground: "A05A2C" },
-      { token: "keyword", foreground: "2D8D37" },
-      { token: "type", foreground: "286E60" },
-      { token: "delimiter", foreground: "505050" },
-      { token: "placeholder.delimiter", foreground: "2D8D37" },
-      { token: "placeholder.key", foreground: "286E60", fontStyle: "bold" },
-    ],
-    colors: {
-      "editor.background": "#FFFFFF",
-      "editor.foreground": "#131313",
-      "editor.lineHighlightBackground": "#F5F7F5",
-      "editorCursor.foreground": "#2D8D37",
-      "editorLineNumber.foreground": "#A3A3A3",
-      "editorLineNumber.activeForeground": "#5B5B5B",
-      "editor.selectionBackground": "#CCE8CF",
-      "editor.inactiveSelectionBackground": "#DFEFE1",
-      "editorWhitespace.foreground": "#D9D9D9",
-      "editorIndentGuide.background1": "#E6E6E6",
-      "editorIndentGuide.activeBackground1": "#CBCBCB",
-      "editorGutter.background": "#FFFFFF",
-    },
-  });
-
-  monaco.editor.defineTheme("eshttp-soft", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { token: "comment", foreground: "8D8D8D", fontStyle: "italic" },
-      { token: "string", foreground: "A5BE8A" },
-      { token: "number", foreground: "C8A379" },
-      { token: "keyword", foreground: "8CB66B" },
-      { token: "type", foreground: "B0C6A3" },
-      { token: "delimiter", foreground: "C9C9C9" },
-      { token: "placeholder.delimiter", foreground: "8CB66B" },
-      { token: "placeholder.key", foreground: "B0C6A3", fontStyle: "bold" },
-    ],
-    colors: {
-      "editor.background": "#202020",
-      "editor.foreground": "#E2E2E2",
-      "editor.lineHighlightBackground": "#292929",
-      "editorCursor.foreground": "#8CB66B",
-      "editorLineNumber.foreground": "#707070",
-      "editorLineNumber.activeForeground": "#B0B0B0",
-      "editor.selectionBackground": "#3A4731",
-      "editor.inactiveSelectionBackground": "#313C2A",
-      "editorWhitespace.foreground": "#3E3E3E",
-      "editorIndentGuide.background1": "#383838",
-      "editorIndentGuide.activeBackground1": "#505050",
-      "editorGutter.background": "#202020",
-    },
-  });
-
-  monaco.editor.defineTheme("eshttp-gruvbox", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { token: "comment", foreground: "928374", fontStyle: "italic" },
-      { token: "string", foreground: "B8BB26" },
-      { token: "number", foreground: "D79921" },
-      { token: "keyword", foreground: "FB4934" },
-      { token: "type", foreground: "8EC07C" },
-      { token: "delimiter", foreground: "D5C4A1" },
-      { token: "placeholder.delimiter", foreground: "FE8019" },
-      { token: "placeholder.key", foreground: "B8BB26", fontStyle: "bold" },
-    ],
-    colors: {
-      "editor.background": "#282828",
-      "editor.foreground": "#EBDBB2",
-      "editor.lineHighlightBackground": "#32302F",
-      "editorCursor.foreground": "#FE8019",
-      "editorLineNumber.foreground": "#7C6F64",
-      "editorLineNumber.activeForeground": "#A89984",
-      "editor.selectionBackground": "#504945",
-      "editor.inactiveSelectionBackground": "#3C3836",
-      "editorWhitespace.foreground": "#5A524C",
-      "editorIndentGuide.background1": "#4A4440",
-      "editorIndentGuide.activeBackground1": "#665C54",
-      "editorGutter.background": "#282828",
-    },
-  });
-
-  monacoThemesRegistered = true;
-}
-
-function createRow(partial?: Partial<KeyValueRow>): KeyValueRow {
-  return {
-    id: crypto.randomUUID(),
-    key: partial?.key ?? "",
-    value: partial?.value ?? "",
-    enabled: partial?.enabled ?? true,
-  };
-}
-
-function parseQueryRows(url: string): { baseUrl: string; rows: KeyValueRow[] } {
-  const [baseUrl = "", queryString = ""] = url.split("?", 2);
-  if (!queryString) {
-    return { baseUrl, rows: [] };
-  }
-
-  const rows = queryString
-    .split("&")
-    .filter(Boolean)
-    .map((part) => {
-      const [rawKey = "", rawValue = ""] = part.split("=", 2);
-      const decodeSafe = (value: string): string => {
-        try {
-          return decodeURIComponent(value);
-        } catch {
-          return value;
-        }
-      };
-
-      return createRow({
-        key: decodeSafe(rawKey),
-        value: decodeSafe(rawValue),
-        enabled: true,
-      });
-    });
-
-  return { baseUrl, rows };
-}
-
-function buildUrl(baseUrl: string, params: KeyValueRow[]): string {
-  const trimmed = baseUrl.trim();
-  const query = params
-    .filter((row) => row.enabled && row.key.trim())
-    .map((row) => `${row.key.trim()}=${row.value.trim()}`)
-    .join("&");
-
-  if (!query) {
-    return trimmed;
-  }
-
-  const separator = trimmed.includes("?") ? "&" : "?";
-  return `${trimmed}${separator}${query}`;
-}
-
-function rowsToHeaderMap(rows: KeyValueRow[]): Record<string, string> {
-  const result: Record<string, string> = {};
-
-  for (const row of rows) {
-    const key = row.key.trim();
-    if (!row.enabled || !key) {
-      continue;
-    }
-
-    result[key] = row.value;
-  }
-
-  return result;
-}
-
-function headersToRows(headers: Record<string, string>): KeyValueRow[] {
-  return Object.entries(headers).map(([key, value]) => createRow({ key, value, enabled: true }));
-}
-
-function detectPayloadLanguage(value: string | undefined): PayloadLanguage {
-  if (!value) {
-    return "json";
-  }
-
-  const trimmed = value.trim();
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    return "json";
-  }
-
-  return "graphql";
-}
-
-function buildRequestText(
-  method: string,
-  baseUrl: string,
-  params: KeyValueRow[],
-  headers: KeyValueRow[],
-  bearerToken: string,
-  bodyText: string,
-): string {
-  const url = buildUrl(baseUrl, params);
-  const mergedHeaders = rowsToHeaderMap(headers);
-
-  if (bearerToken.trim()) {
-    mergedHeaders.Authorization = `Bearer ${bearerToken.trim()}`;
-  }
-
-  const headerLines = Object.entries(mergedHeaders).map(([key, value]) => `${key}: ${value}`);
-  const firstLine = `${method} ${url}`;
-
-  if (!bodyText.trim()) {
-    if (headerLines.length === 0) {
-      return firstLine;
-    }
-
-    return [firstLine, ...headerLines].join("\n");
-  }
-
-  if (headerLines.length === 0) {
-    return [firstLine, "", bodyText].join("\n");
-  }
-
-  return [firstLine, ...headerLines, "", bodyText].join("\n");
-}
 
 async function readCombinedEnv(
   readEnvironmentFile: (envName: string) => Promise<string | null>,
@@ -438,28 +160,30 @@ export function App() {
   const [selectedAccentToken, setSelectedAccentToken] = useState("accent-1");
 
   const [themeName, setThemeName] = useState<ThemeName>("black");
-  const [syncParamsWithUrl, setSyncParamsWithUrl] = useState(true);
   const [panelTab, setPanelTab] = useState<PanelTab>("body");
   const [responseTab, setResponseTab] = useState<ResponseTab>("response");
-
-  const [method, setMethod] = useState<HttpMethod>("GET");
-  const [baseUrl, setBaseUrl] = useState("https://httpbin.org/get");
-  const [queryRows, setQueryRows] = useState<KeyValueRow[]>([]);
-  const [headerRows, setHeaderRows] = useState<KeyValueRow[]>([]);
-  const [bearerToken, setBearerToken] = useState("");
-
-  const [bodyMode, setBodyMode] = useState<BodyMode>("editor");
-  const [payloadLanguage, setPayloadLanguage] = useState<PayloadLanguage>("json");
-  const [editorBody, setEditorBody] = useState("");
-  const [fileBody, setFileBody] = useState("");
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [draft, setDraft] = useState(createDefaultRequestDraft);
 
   const [responseText, setResponseText] = useState("No request executed yet.");
   const [statusText, setStatusText] = useState("idle");
-  const [requestPreview, setRequestPreview] = useState("GET https://httpbin.org/get");
+  const [requestPreview, setRequestPreview] = useState(() =>
+    composeRequestText(createDefaultRequestDraft()),
+  );
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const {
+    method,
+    queryRows,
+    headerRows,
+    bearerToken,
+    bodyMode,
+    payloadLanguage,
+    editorBody,
+    fileName,
+    syncParamsWithUrl,
+  } = draft;
 
-  const accentPalette = ACCENTS_BY_THEME[themeName];
+  const activeTheme = APP_THEME_CONFIG[themeName];
+  const accentPalette = activeTheme.accents;
   const activeWorkspaceNode = useMemo(
     () =>
       workspaceTree.find((node) => node.workspace.id === activeWorkspaceId) ??
@@ -582,71 +306,18 @@ export function App() {
     };
   }, [envName, repository, selection]);
 
-  const computedBodyText = bodyMode === "file" ? fileBody : editorBody;
-
   const composedRequestText = useMemo(() => {
-    return buildRequestText(method, baseUrl, queryRows, headerRows, bearerToken, computedBodyText);
-  }, [method, baseUrl, queryRows, headerRows, bearerToken, computedBodyText]);
+    return composeRequestText(draft);
+  }, [draft]);
 
-  const displayedUrl = syncParamsWithUrl ? buildUrl(baseUrl, queryRows) : baseUrl;
+  const displayedUrl = getDisplayedUrl(draft);
 
   async function onSelectRequest(nextSelection: Selection) {
     setSelection(nextSelection);
     setActiveWorkspaceId(nextSelection.workspace.id);
 
     const text = await repository.readRequestText(nextSelection.request.id);
-    try {
-      const parsed = parseHttpRequestText(text, nextSelection.request.title);
-
-      const methodFromFile = parsed.method.toUpperCase();
-      if (HTTP_METHODS.includes(methodFromFile as HttpMethod)) {
-        setMethod(methodFromFile as HttpMethod);
-      }
-
-      const { baseUrl: parsedBaseUrl, rows: parsedQueryRows } = parseQueryRows(parsed.url);
-      setBaseUrl(parsedBaseUrl);
-      setQueryRows(parsedQueryRows);
-
-      const nextHeaders = { ...parsed.headers };
-      const authHeader = nextHeaders.Authorization ?? nextHeaders.authorization;
-
-      if (authHeader?.startsWith("Bearer ")) {
-        setBearerToken(authHeader.slice("Bearer ".length).trim());
-        delete nextHeaders.Authorization;
-        delete nextHeaders.authorization;
-      } else {
-        setBearerToken("");
-      }
-
-      setHeaderRows(headersToRows(nextHeaders));
-
-      const nextBody = parsed.body ?? "";
-      setEditorBody(nextBody);
-      setPayloadLanguage(detectPayloadLanguage(nextBody));
-      setBodyMode("editor");
-      setFileBody("");
-      setFileName(null);
-    } catch {
-      // Keep UI editable even if the file doesn't follow strict parse format.
-      setMethod("GET");
-      setBaseUrl("https://httpbin.org/get");
-      setQueryRows([]);
-      setHeaderRows([]);
-      setBearerToken("");
-      setEditorBody(text);
-      setPayloadLanguage(detectPayloadLanguage(text));
-      setBodyMode("editor");
-      setFileBody("");
-      setFileName(null);
-    }
-  }
-
-  function updateRow(
-    rows: KeyValueRow[],
-    rowId: string,
-    updater: (row: KeyValueRow) => KeyValueRow,
-  ): KeyValueRow[] {
-    return rows.map((row) => (row.id === rowId ? updater(row) : row));
+    setDraft(parseRequestTextToDraft(text, nextSelection.request.title));
   }
 
   async function onBodyFileSelect(event: ChangeEvent<HTMLInputElement>) {
@@ -656,8 +327,11 @@ export function App() {
     }
 
     const contents = await file.text();
-    setFileName(file.name);
-    setFileBody(contents);
+    setDraft((current) => ({
+      ...current,
+      fileName: file.name,
+      fileBody: contents,
+    }));
   }
 
   async function onCreateWorkspace() {
@@ -880,28 +554,14 @@ export function App() {
   }
 
   function onUrlInputChange(nextValue: string) {
-    if (!syncParamsWithUrl) {
-      setBaseUrl(nextValue);
-      return;
-    }
-
-    const { baseUrl: parsedBaseUrl, rows: parsedQueryRows } = parseQueryRows(nextValue);
-    setBaseUrl(parsedBaseUrl);
-    setQueryRows(parsedQueryRows);
+    setDraft((current) => updateDraftUrl(current, nextValue));
   }
 
   function onSyncParamsWithUrlChange(enabled: boolean) {
-    setSyncParamsWithUrl(enabled);
-    if (!enabled || !baseUrl.includes("?")) {
-      return;
-    }
-
-    const { baseUrl: parsedBaseUrl, rows: parsedQueryRows } = parseQueryRows(baseUrl);
-    setBaseUrl(parsedBaseUrl);
-    setQueryRows(parsedQueryRows);
+    setDraft((current) => setDraftSyncParamsWithUrl(current, enabled));
   }
 
-  const monacoTheme = MONACO_THEME_BY_APP_THEME[themeName];
+  const monacoTheme = activeTheme.monacoTheme;
 
   function pushToast(text: string, tone: ToastMessage["tone"] = "error") {
     const id = crypto.randomUUID();
@@ -916,28 +576,12 @@ export function App() {
     setSelectedAccentToken("accent-1");
   }
 
-  function updateQueryRowValue(
-    rowId: string,
-    nextValue: Partial<Pick<KeyValueRow, "key" | "value" | "enabled">>,
-  ) {
-    setQueryRows((current) =>
-      updateRow(current, rowId, (target) => ({
-        ...target,
-        ...nextValue,
-      })),
-    );
+  function updateQueryRowValue(rowId: string, nextValue: Partial<(typeof queryRows)[number]>) {
+    setDraft((current) => updateDraftRow(current, "queryRows", rowId, nextValue));
   }
 
-  function updateHeaderRowValue(
-    rowId: string,
-    nextValue: Partial<Pick<KeyValueRow, "key" | "value" | "enabled">>,
-  ) {
-    setHeaderRows((current) =>
-      updateRow(current, rowId, (target) => ({
-        ...target,
-        ...nextValue,
-      })),
-    );
+  function updateHeaderRowValue(rowId: string, nextValue: Partial<(typeof headerRows)[number]>) {
+    setDraft((current) => updateDraftRow(current, "headerRows", rowId, nextValue));
   }
 
   return (
@@ -989,21 +633,21 @@ export function App() {
       <RequestWorkbenchView
         monacoTheme={monacoTheme}
         beforeMountMonaco={registerMonacoThemes}
-        method={method}
+        method={draft.method}
         displayedUrl={displayedUrl}
         panelTab={panelTab}
         responseTab={responseTab}
-        queryRows={queryRows}
-        headerRows={headerRows}
-        bearerToken={bearerToken}
-        bodyMode={bodyMode}
-        payloadLanguage={payloadLanguage}
-        editorBody={editorBody}
-        fileName={fileName}
+        queryRows={draft.queryRows}
+        headerRows={draft.headerRows}
+        bearerToken={draft.bearerToken}
+        bodyMode={draft.bodyMode}
+        payloadLanguage={draft.payloadLanguage}
+        editorBody={draft.editorBody}
+        fileName={draft.fileName}
         statusText={statusText}
         requestPreview={requestPreview}
         responseText={responseText}
-        onMethodChange={setMethod}
+        onMethodChange={(method) => setDraft((current) => ({ ...current, method }))}
         onUrlChange={onUrlInputChange}
         onRunRequest={() => void onRunRequest()}
         onSaveRequest={() => void onSaveRequest()}
@@ -1011,18 +655,20 @@ export function App() {
         onResponseTabChange={setResponseTab}
         onQueryRowChange={updateQueryRowValue}
         onHeaderRowChange={updateHeaderRowValue}
-        onAddQueryRow={() => setQueryRows((current) => [...current, createRow()])}
-        onAddHeaderRow={() => setHeaderRows((current) => [...current, createRow()])}
+        onAddQueryRow={() => setDraft((current) => addDraftRow(current, "queryRows"))}
+        onAddHeaderRow={() => setDraft((current) => addDraftRow(current, "headerRows"))}
         onRemoveQueryRow={(rowId) =>
-          setQueryRows((current) => current.filter((entry) => entry.id !== rowId))
+          setDraft((current) => removeDraftRow(current, "queryRows", rowId))
         }
         onRemoveHeaderRow={(rowId) =>
-          setHeaderRows((current) => current.filter((entry) => entry.id !== rowId))
+          setDraft((current) => removeDraftRow(current, "headerRows", rowId))
         }
-        onBearerTokenChange={setBearerToken}
-        onBodyModeChange={setBodyMode}
-        onPayloadLanguageChange={setPayloadLanguage}
-        onEditorBodyChange={setEditorBody}
+        onBearerTokenChange={(bearerToken) => setDraft((current) => ({ ...current, bearerToken }))}
+        onBodyModeChange={(bodyMode) => setDraft((current) => ({ ...current, bodyMode }))}
+        onPayloadLanguageChange={(payloadLanguage) =>
+          setDraft((current) => ({ ...current, payloadLanguage }))
+        }
+        onEditorBodyChange={(editorBody) => setDraft((current) => ({ ...current, editorBody }))}
         onBodyFileSelect={(event) => void onBodyFileSelect(event)}
       />
     </div>

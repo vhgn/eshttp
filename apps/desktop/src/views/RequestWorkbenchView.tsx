@@ -1,17 +1,21 @@
 import Editor from "@monaco-editor/react";
-import type { ChangeEvent, ComponentProps } from "react";
+import type { ChangeEvent, ComponentProps, ReactNode } from "react";
 import { Button } from "../components/Button";
 import { InlineMonacoInput } from "../components/InlineMonacoInput";
 import { KeyValueTable } from "../components/KeyValueTable";
-import type {
-  BodyMode,
-  HttpMethod,
-  KeyValueRow,
-  PanelTab,
-  PayloadLanguage,
-  ResponseTab,
+import {
+  BODY_MODE_OPTIONS,
+  HTTP_METHODS,
+  PANEL_TAB_OPTIONS,
+  PAYLOAD_LANGUAGE_OPTIONS,
+  RESPONSE_TAB_OPTIONS,
+  type BodyMode,
+  type HttpMethod,
+  type KeyValueRow,
+  type PanelTab,
+  type PayloadLanguage,
+  type ResponseTab,
 } from "./types";
-import { HTTP_METHODS } from "./types";
 
 interface RequestWorkbenchViewProps {
   monacoTheme: string;
@@ -98,6 +102,113 @@ export function RequestWorkbenchView({
     "rounded-control border border-stroke-default bg-surface-secondary px-[0.55rem] py-[0.45rem] text-content-primary disabled:cursor-not-allowed disabled:opacity-60";
   const controlGridClass = "mb-[0.9rem] grid gap-[0.35rem] text-[0.9rem]";
   const editorBoxClass = "overflow-hidden rounded-[10px] border border-stroke-default";
+  const panelContent = {
+    params: (
+      <KeyValueTable
+        rows={queryRows}
+        keyPlaceholder="limit"
+        valuePlaceholder="10"
+        addLabel="Add Param"
+        theme={monacoTheme}
+        beforeMount={beforeMountMonaco}
+        onRowChange={onQueryRowChange}
+        onRemoveRow={onRemoveQueryRow}
+        onAddRow={onAddQueryRow}
+      />
+    ),
+    headers: (
+      <KeyValueTable
+        rows={headerRows}
+        keyPlaceholder="Content-Type"
+        valuePlaceholder="application/json"
+        addLabel="Add Header"
+        theme={monacoTheme}
+        beforeMount={beforeMountMonaco}
+        onRowChange={onHeaderRowChange}
+        onRemoveRow={onRemoveHeaderRow}
+        onAddRow={onAddHeaderRow}
+      />
+    ),
+    auth: (
+      <div className="p-[0.72rem]">
+        <div className={controlGridClass}>
+          <p className="m-0">Bearer Token</p>
+          <InlineMonacoInput
+            className="[--inline-input-bg:var(--surface-tertiary)]"
+            value={bearerToken}
+            onChange={onBearerTokenChange}
+            placeholder="Paste JWT or access token"
+            theme={monacoTheme}
+            beforeMount={beforeMountMonaco}
+            ariaLabel="Bearer token"
+          />
+        </div>
+      </div>
+    ),
+    body: (
+      <div className="p-[0.72rem]">
+        <div className="mb-[0.66rem] flex items-center gap-[0.85rem]">
+          {BODY_MODE_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className="inline-flex items-center gap-[0.35rem] text-content-muted"
+            >
+              <input
+                className="accent-stroke-accent"
+                type="radio"
+                checked={bodyMode === option.value}
+                onChange={() => onBodyModeChange(option.value)}
+              />
+              {option.label}
+            </label>
+          ))}
+
+          <select
+            className={controlSurfaceClass}
+            value={payloadLanguage}
+            onChange={(event) => onPayloadLanguageChange(event.target.value as PayloadLanguage)}
+            disabled={bodyMode !== "editor"}
+          >
+            {PAYLOAD_LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {bodyMode === "editor" ? (
+          <div className={editorBoxClass}>
+            <Editor
+              height="360px"
+              theme={monacoTheme}
+              beforeMount={beforeMountMonaco}
+              language={payloadLanguage}
+              value={editorBody}
+              onChange={(value) => onEditorBodyChange(value ?? "")}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                tabSize: 2,
+                automaticLayout: true,
+              }}
+            />
+          </div>
+        ) : (
+          <div className="rounded-[10px] border border-stroke-default bg-surface-tertiary p-[0.8rem]">
+            <input className={controlSurfaceClass} type="file" onChange={onBodyFileSelect} />
+            <p className="mb-0 mt-[0.55rem] text-[0.86rem] text-content-muted">
+              {fileName ? `Attached: ${fileName}` : "No file attached"}
+            </p>
+          </div>
+        )}
+      </div>
+    ),
+  } satisfies Record<PanelTab, ReactNode>;
+  const responseContent = {
+    request: requestPreview,
+    response: responseText,
+  } satisfies Record<ResponseTab, string>;
 
   return (
     <main className="grid min-h-screen grid-rows-[auto_1fr_1fr] gap-[0.78rem] p-[0.9rem] max-[1080px]:grid-rows-[auto_auto_auto]">
@@ -134,179 +245,43 @@ export function RequestWorkbenchView({
 
       <section className={panelShellClass}>
         <nav className="flex gap-[0.45rem] border-b border-stroke-default p-[0.7rem]">
-          <Button
-            variant="tab"
-            size="compact"
-            className={panelTab === "params" ? tabButtonActiveClass : undefined}
-            onClick={() => onPanelTabChange("params")}
-          >
-            Params
-          </Button>
-          <Button
-            variant="tab"
-            size="compact"
-            className={panelTab === "headers" ? tabButtonActiveClass : undefined}
-            onClick={() => onPanelTabChange("headers")}
-          >
-            Headers
-          </Button>
-          <Button
-            variant="tab"
-            size="compact"
-            className={panelTab === "auth" ? tabButtonActiveClass : undefined}
-            onClick={() => onPanelTabChange("auth")}
-          >
-            Auth
-          </Button>
-          <Button
-            variant="tab"
-            size="compact"
-            className={panelTab === "body" ? tabButtonActiveClass : undefined}
-            onClick={() => onPanelTabChange("body")}
-          >
-            Body
-          </Button>
+          {PANEL_TAB_OPTIONS.map((option) => (
+            <Button
+              key={option.value}
+              variant="tab"
+              size="compact"
+              className={panelTab === option.value ? tabButtonActiveClass : undefined}
+              onClick={() => onPanelTabChange(option.value)}
+            >
+              {option.label}
+            </Button>
+          ))}
         </nav>
 
-        {panelTab === "params" ? (
-          <KeyValueTable
-            rows={queryRows}
-            keyPlaceholder="limit"
-            valuePlaceholder="10"
-            addLabel="Add Param"
-            theme={monacoTheme}
-            beforeMount={beforeMountMonaco}
-            onRowChange={onQueryRowChange}
-            onRemoveRow={onRemoveQueryRow}
-            onAddRow={onAddQueryRow}
-          />
-        ) : null}
-
-        {panelTab === "headers" ? (
-          <KeyValueTable
-            rows={headerRows}
-            keyPlaceholder="Content-Type"
-            valuePlaceholder="application/json"
-            addLabel="Add Header"
-            theme={monacoTheme}
-            beforeMount={beforeMountMonaco}
-            onRowChange={onHeaderRowChange}
-            onRemoveRow={onRemoveHeaderRow}
-            onAddRow={onAddHeaderRow}
-          />
-        ) : null}
-
-        {panelTab === "auth" ? (
-          <div className="p-[0.72rem]">
-            <div className={controlGridClass}>
-              <p className="m-0">Bearer Token</p>
-              <InlineMonacoInput
-                className="[--inline-input-bg:var(--surface-tertiary)]"
-                value={bearerToken}
-                onChange={onBearerTokenChange}
-                placeholder="Paste JWT or access token"
-                theme={monacoTheme}
-                beforeMount={beforeMountMonaco}
-                ariaLabel="Bearer token"
-              />
-            </div>
-          </div>
-        ) : null}
-
-        {panelTab === "body" ? (
-          <div className="p-[0.72rem]">
-            <div className="mb-[0.66rem] flex items-center gap-[0.85rem]">
-              <label className="inline-flex items-center gap-[0.35rem] text-content-muted">
-                <input
-                  className="accent-stroke-accent"
-                  type="radio"
-                  checked={bodyMode === "editor"}
-                  onChange={() => onBodyModeChange("editor")}
-                />
-                Monaco Editor
-              </label>
-              <label className="inline-flex items-center gap-[0.35rem] text-content-muted">
-                <input
-                  className="accent-stroke-accent"
-                  type="radio"
-                  checked={bodyMode === "file"}
-                  onChange={() => onBodyModeChange("file")}
-                />
-                File Upload
-              </label>
-
-              <select
-                className={controlSurfaceClass}
-                value={payloadLanguage}
-                onChange={(event) => onPayloadLanguageChange(event.target.value as PayloadLanguage)}
-                disabled={bodyMode !== "editor"}
-              >
-                <option value="json">JSON</option>
-                <option value="graphql">GraphQL</option>
-              </select>
-            </div>
-
-            {bodyMode === "editor" ? (
-              <div className={editorBoxClass}>
-                <Editor
-                  height="360px"
-                  theme={monacoTheme}
-                  beforeMount={beforeMountMonaco}
-                  language={payloadLanguage}
-                  value={editorBody}
-                  onChange={(value) => onEditorBodyChange(value ?? "")}
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    tabSize: 2,
-                    automaticLayout: true,
-                  }}
-                />
-              </div>
-            ) : (
-              <div className="rounded-[10px] border border-stroke-default bg-surface-tertiary p-[0.8rem]">
-                <input className={controlSurfaceClass} type="file" onChange={onBodyFileSelect} />
-                <p className="mb-0 mt-[0.55rem] text-[0.86rem] text-content-muted">
-                  {fileName ? `Attached: ${fileName}` : "No file attached"}
-                </p>
-              </div>
-            )}
-          </div>
-        ) : null}
+        {panelContent[panelTab]}
       </section>
 
       <section className={panelShellClass}>
         <div className="flex items-center justify-between border-b border-stroke-default">
           <nav className="flex gap-[0.45rem] p-[0.55rem_0.7rem]">
-            <Button
-              variant="tab"
-              size="compact"
-              className={responseTab === "request" ? tabButtonActiveClass : undefined}
-              onClick={() => onResponseTabChange("request")}
-            >
-              Request
-            </Button>
-            <Button
-              variant="tab"
-              size="compact"
-              className={responseTab === "response" ? tabButtonActiveClass : undefined}
-              onClick={() => onResponseTabChange("response")}
-            >
-              Response
-            </Button>
+            {RESPONSE_TAB_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                variant="tab"
+                size="compact"
+                className={responseTab === option.value ? tabButtonActiveClass : undefined}
+                onClick={() => onResponseTabChange(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
           </nav>
           <p className="m-0 pr-[0.8rem] font-semibold text-content-muted">{statusText}</p>
         </div>
 
-        {responseTab === "request" ? (
-          <pre className="m-0 h-[calc(100%-49px)] overflow-auto whitespace-pre-wrap break-words p-[0.8rem] font-mono text-[0.86rem]">
-            {requestPreview}
-          </pre>
-        ) : (
-          <pre className="m-0 h-[calc(100%-49px)] overflow-auto whitespace-pre-wrap break-words p-[0.8rem] font-mono text-[0.86rem]">
-            {responseText}
-          </pre>
-        )}
+        <pre className="m-0 h-[calc(100%-49px)] overflow-auto whitespace-pre-wrap break-words p-[0.8rem] font-mono text-[0.86rem]">
+          {responseContent[responseTab]}
+        </pre>
       </section>
     </main>
   );

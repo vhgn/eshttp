@@ -5,6 +5,7 @@ import { Button } from "../components/Button";
 import { CollectionTree } from "../components/CollectionTree";
 import { InlineMonacoInput } from "../components/InlineMonacoInput";
 import type { WorkspaceTreeNode } from "../data/collectionsRepository";
+import { APP_THEME_OPTIONS } from "../themeConfig";
 import type { AccentOption, CollectionTreeBranch, Selection, ThemeName } from "./types";
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -189,10 +190,11 @@ export function WorkspaceSidebarView({
             value={themeName}
             onChange={(event) => onThemeChange(event.target.value as ThemeName)}
           >
-            <option value="black">Black</option>
-            <option value="light">Light</option>
-            <option value="soft">Soft</option>
-            <option value="gruvbox">Gruvbox</option>
+            {APP_THEME_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="inline-flex items-center gap-[0.45rem] text-[0.85rem] text-content-muted">

@@ -5,6 +5,8 @@ Scope:
 - `libs/core/src/env.ts`
 - `libs/core/src/executor.ts`
 - `libs/core/src/errors.ts`
+- `apps/desktop/src/requestDraft.ts`
+- `apps/desktop/src/App.tsx`
 
 ## Request text parsing
 
@@ -51,3 +53,14 @@ Return shape:
 - `parsedRequest`
 - `builtRequest`
 - `environment`
+
+## Desktop request draft
+
+Desktop request editing no longer keeps URL, headers, auth, and body in separate ad hoc state fields inside `App.tsx`.
+`apps/desktop/src/requestDraft.ts` is the single source of truth for that editor model:
+- `createDefaultRequestDraft()` creates the initial editor state
+- `parseRequestTextToDraft()` loads a saved `.http` file into the draft, with raw-text fallback on parse failure
+- `composeRequestText()` serializes the draft back to `.http` text for save/run
+- `updateDraftUrl()` and `setDraftSyncParamsWithUrl()` keep URL/query sync behavior in one place
+
+`App.tsx` still owns workspace selection, env loading, and request execution, but request-shape transitions should go through these pure helpers first.

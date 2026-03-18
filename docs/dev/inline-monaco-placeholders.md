@@ -3,6 +3,7 @@
 Scope:
 - `apps/desktop/src/components/InlineMonacoInput.tsx`
 - `apps/desktop/src/monaco/inlineLanguage.ts`
+- `apps/desktop/src/requestDraft.ts`
 - `apps/desktop/src/App.tsx`
 
 ## Inline input constraints
@@ -42,5 +43,7 @@ Suggestions insert `<KEY>}}` and use `Variable` completion kind.
 
 `App.tsx` loads workspace + collection env text for the selected request/environment, merges them with core `mergeEnvironment`, then calls:
 - `setInlineCompletionEnvKeys(Object.keys(mergedEnv))`
+
+The selected request itself is hydrated through `requestDraft.ts`, but placeholder completion still depends only on the merged environment map, not on the request draft contents.
 
 When no selection exists or env read fails, keys are reset to empty.
